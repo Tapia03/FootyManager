@@ -8,7 +8,7 @@ import { buildInjuryPatch, rollRelapse } from "@/game/medical";
 import { progressCup } from "./cup-progression";
 import { refreshTransferOffers } from "./transfer-offers";
 import { advanceScouting } from "./scouting";
-import { applyTraining } from "@/game/training";
+import { applyTraining, resolveWeeklyFocus, countRestDays, REST_DAY_REGEN_BONUS } from "@/game/training";
 import { conditionRegenPerDay, trainingSpeedMultiplier } from "@/game/staff";
 import { simulateAITransferActivity } from "./ai-transfers";
 import { refreshJobOffers } from "./job-offers";
@@ -103,11 +103,11 @@ export async function advanceDays(
   if (clubIds.length > 0) {
     const { data: clubs } = await supabase
       .from("clubs")
-      .select("id, name, short_name, morale, reputation, formation, mentality, pressing, defensive_line, tempo, passing_style, stadium_capacity, training_focus, strength, competition_id, penalty_taker_id, free_kick_taker_id, corner_taker_id, captain_id")
-      .in("id", clubIds);
+      .select("id, name, short_name, morale, reputation, formation, mentality, pressing, defensive_line, tempo, passing_style, stadium_capacity, training_focus, weekly_training, strength, competition_id, penalty_taker_id, free_kick_taker_id, corner_taker_id, captain_id")
+      .in("id", clubIds) as any;
     for (const c of clubs ?? []) clubMap.set(c.id, c);
 
-    const compIds = Array.from(new Set((clubs ?? []).map((c) => c.competition_id).filter(Boolean))) as string[];
+    const compIds = Array.from(new Set((clubs ?? []).map((c: any) => c.competition_id).filter(Boolean))) as string[];
     if (compIds.length > 0) {
       const { data: comps } = await supabase
         .from("competitions").select("id, playable").in("id", compIds);
@@ -211,14 +211,20 @@ export async function advanceDays(
         const clubPlayers = playersByClub.get(clubId);
         if (!clubPlayers || clubPlayers.length === 0) continue;
         const focus = (clubMap.get(clubId)?.training_focus as any) ?? "balanced";
+        const weekly = (clubMap.get(clubId)?.weekly_training as any) ?? null;
         const coachSkill = coachSkillByClub.get(clubId) ?? 0;
-        const patches = applyTraining(clubPlayers as any, focus, n, trainingSpeedMultiplier(coachSkill), endISO);
+        const patches = applyTraining(
+          clubPlayers as any,
+          (dateISO) => resolveWeeklyFocus(weekly, focus, dateISO),
+          startDate, n, trainingSpeedMultiplier(coachSkill),
+        );
         const patchById = new Map(patches.map((p) => [p.id, p]));
 
         // Condição — antes travada em 100 pra sempre pra qualquer clube de
         // IA (só regride pra usuário), dando um bônus de fôlego permanente
         // (condMul = 1.0 sempre) pra todo adversário — ver src/game/tactics.ts.
-        const regen = conditionRegenPerDay(fitnessSkillByClub.get(clubId) ?? 0) * n;
+        const restDays = countRestDays(weekly, focus, startDate, n);
+        const regen = conditionRegenPerDay(fitnessSkillByClub.get(clubId) ?? 0) * n + restDays * REST_DAY_REGEN_BONUS;
         const drain = (matchesPlayedByClub.get(clubId) ?? 0) * 18;
         const conditionDelta = regen - drain;
 
@@ -724,7 +730,7 @@ export async function advanceDays(
       console.error("refreshTransferRequests falhou", e);
     }
     await advanceScouting(myClubId, n);
-    trainingInjuries = await applyTrainingAndRecovery(myClubId, n, endISO);
+    trainingInjuries = await applyTrainingAndRecovery(myClubId, n, startDate);
     releaseClauseTriggers = await checkReleaseClauses(saveId, myClubId, endISO, n);
   }
 
@@ -931,7 +937,7 @@ function clamp01_100(v: number): number {
 // -----------------------------------------------------------------------------
 async function applyTrainingAndRecovery(myClubId: string, days: number, todayISO: string): Promise<{ name: string; days: number }[]> {
   const [{ data: club }, { data: staff }, { data: roster }] = await Promise.all([
-    supabase.from("clubs").select("training_focus, training_facilities").eq("id", myClubId).single(),
+    supabase.from("clubs").select("training_focus, weekly_training, training_facilities").eq("id", myClubId).single() as any,
     supabase.from("staff").select("role, skill").eq("club_id", myClubId),
     supabase.from("players").select(
       "id, name, age, position, condition, attributes, overall, market_value, individual_training_focus, injured_until, injury_history",
@@ -942,12 +948,18 @@ async function applyTrainingAndRecovery(myClubId: string, days: number, todayISO
   const coachSkill = staff?.find((s) => s.role === "coach")?.skill ?? 0;
   const fitnessSkill = staff?.find((s) => s.role === "fitness_coach")?.skill ?? 0;
   const focus = (club?.training_focus as any) ?? "balanced";
+  const weekly = (club?.weekly_training as any) ?? null;
   // CT modernizado acelera treino e recuperação (ver catálogo em src/game/board.ts).
   const ctFactor = facilityFactor((club as any)?.training_facilities ?? 3);
 
-  const patches = applyTraining(roster as any, focus, days, trainingSpeedMultiplier(coachSkill) * ctFactor, todayISO);
+  const patches = applyTraining(
+    roster as any,
+    (dateISO) => resolveWeeklyFocus(weekly, focus, dateISO),
+    todayISO, days, trainingSpeedMultiplier(coachSkill) * ctFactor,
+  );
   const patchById = new Map(patches.map((p) => [p.id, p]));
-  const regen = conditionRegenPerDay(fitnessSkill) * ctFactor * days;
+  const restDays = countRestDays(weekly, focus, todayISO, days);
+  const regen = conditionRegenPerDay(fitnessSkill) * ctFactor * days + restDays * REST_DAY_REGEN_BONUS;
 
   const trainingInjuries: { name: string; days: number }[] = [];
   const updates = roster.map((p) => {

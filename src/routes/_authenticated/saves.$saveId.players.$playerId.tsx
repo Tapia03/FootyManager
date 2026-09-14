@@ -9,7 +9,7 @@ import { startScouting, cancelScouting } from "@/lib/scouting";
 import { offerRenewal, respondToContractOffer } from "@/lib/contract-offers";
 import { expectedWage } from "@/game/contract-negotiation";
 import { injuryTypeLabel, type InjuryHistoryEntry } from "@/game/medical";
-import { TRAINING_FOCUS_OPTIONS, TRAINING_FOCUS_LABELS, type TrainingFocus } from "@/game/training";
+import { WEEKLY_FOCUS_OPTIONS, WEEKLY_FOCUS_LABELS, resolveWeeklyFocus, type TrainingFocus, type WeeklyFocus } from "@/game/training";
 import {
   ATTRIBUTE_GROUPS, ATTRIBUTE_LABEL, radarScores, attributeTone, playerScoutingNotes,
   type AttributeKey, type PlayerAttributes,
@@ -105,8 +105,9 @@ function PlayerDetail() {
   const club = useQuery({
     queryKey: ["club-training", myClubId],
     enabled: !!myClubId,
-    queryFn: async () => (await supabase.from("clubs").select("training_focus").eq("id", myClubId!).single()).data,
+    queryFn: async () => (await supabase.from("clubs").select("training_focus, weekly_training").eq("id", myClubId!).single() as any).data,
   });
+  const todayClubFocus = resolveWeeklyFocus(club.data?.weekly_training ?? null, (club.data?.training_focus as TrainingFocus) ?? "balanced", today ?? new Date().toISOString().slice(0, 10));
 
   // Elenco do usuário — pro comparador de atributos lado a lado.
   const squadForCompare = useQuery({
@@ -119,7 +120,7 @@ function PlayerDetail() {
   const [compareId, setCompareId] = useState<string>("");
 
   const setFocus = useMutation({
-    mutationFn: async (focus: TrainingFocus | null) => {
+    mutationFn: async (focus: WeeklyFocus | null) => {
       const { error } = await supabase.from("players").update({ individual_training_focus: focus }).eq("id", playerId);
       if (error) throw error;
     },
@@ -452,8 +453,8 @@ function PlayerDetail() {
         <Card className="p-4">
           <h3 className="font-semibold mb-3">Treino individual</h3>
           <p className="text-xs text-muted-foreground mb-3">
-            Sobrescreve, só pra este jogador, o foco de treino do time inteiro
-            ({TRAINING_FOCUS_LABELS[(club.data?.training_focus as TrainingFocus) ?? "balanced"]}).
+            Sobrescreve, só pra este jogador, a grade semanal do time — vale todo dia, inclusive nos dias de descanso
+            do time (hoje o time treina: {WEEKLY_FOCUS_LABELS[todayClubFocus]}).
           </p>
           <div className="flex flex-wrap gap-2">
             <button
@@ -465,7 +466,7 @@ function PlayerDetail() {
             >
               Padrão do clube
             </button>
-            {TRAINING_FOCUS_OPTIONS.map((f) => (
+            {WEEKLY_FOCUS_OPTIONS.map((f) => (
               <button
                 key={f}
                 onClick={() => setFocus.mutate(f)}
@@ -474,7 +475,7 @@ function PlayerDetail() {
                   p.individual_training_focus === f ? "bg-primary text-primary-foreground border-primary" : "hover:bg-accent"
                 }`}
               >
-                {TRAINING_FOCUS_LABELS[f]}
+                {WEEKLY_FOCUS_LABELS[f]}
               </button>
             ))}
           </div>
