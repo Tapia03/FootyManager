@@ -1,10 +1,16 @@
-// Client do PostgREST local (banco do app desktop). Usa o pacote
-// @supabase/supabase-js porque ele é só um client HTTP genérico pra
-// qualquer servidor que fale o protocolo PostgREST — não tem nada de
-// Supabase-a-nuvem envolvido aqui, é o mesmo PostgREST que roda embutido
-// no app via sidecar (ver src-tauri/src/lib.rs e
-// project_desktop_windows_offline.md na memória do projeto).
-import { createClient } from '@supabase/supabase-js';
+// Client do PostgREST local (banco do app desktop). Usa
+// @supabase/postgrest-js diretamente (não @supabase/supabase-js) porque
+// o SupabaseClient completo sempre monta a URL como `${url}/rest/v1`
+// (convenção do Supabase de verdade, que fica atrás de um gateway que
+// remapeia isso pra raiz do PostgREST) — nosso PostgREST local roda sozinho,
+// sem gateway, então `/rest/v1/saves` não existe (dá erro PGRST125 "Invalid
+// path specified in request URL"), só `/saves` direto funciona.
+// PostgrestClient é o motor de verdade por trás do `.from()`/`.rpc()` do
+// supabase-js — mesma API, sem esse prefixo. Como o app só usa `.from()` e
+// um `.rpc()` (confirmado via grep, sem storage/realtime/functions), essa
+// troca cobre 100% do uso real. Ver project_desktop_windows_offline.md e
+// project_no_lovable_migration.md na memória do projeto.
+import { PostgrestClient } from '@supabase/postgrest-js';
 import type { Database } from './types';
 
 // Endereço padrão: o PostgREST local que o app sobe sozinho (porta fixa em
@@ -16,17 +22,19 @@ const DEFAULT_URL = 'http://127.0.0.1:3111';
 // precisa existir pro client não reclamar.
 const DEFAULT_KEY = 'local-desktop';
 
-function createSupabaseFetch(supabaseKey: string): typeof fetch {
+function createLocalFetch(apiKey: string): typeof fetch {
   return (input, init) => {
     const headers = new Headers(
       typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined,
     );
-
     if (init?.headers) {
       new Headers(init.headers).forEach((value, key) => headers.set(key, value));
     }
-
-    headers.set('apikey', supabaseKey);
+    headers.set('apikey', apiKey);
+    // Sem sessão/JWT real (sem login, ver src/lib/desktop-mode.ts) — o
+    // PostgREST local não tem jwt-secret configurado, então um Authorization
+    // Bearer nunca deve ser mandado (daria "Server lacks JWT secret").
+    headers.delete('Authorization');
     return fetch(input, { ...init, headers });
   };
 }
@@ -35,15 +43,8 @@ function createSupabaseClient() {
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || DEFAULT_URL;
   const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || DEFAULT_KEY;
 
-  return createClient<Database>(SUPABASE_URL, SUPABASE_KEY, {
-    global: {
-      fetch: createSupabaseFetch(SUPABASE_KEY),
-    },
-    auth: {
-      // Sem sessão real — o app não tem login (ver src/lib/desktop-mode.ts).
-      persistSession: false,
-      autoRefreshToken: false,
-    },
+  return new PostgrestClient<Database>(SUPABASE_URL, {
+    fetch: createLocalFetch(SUPABASE_KEY),
   });
 }
 

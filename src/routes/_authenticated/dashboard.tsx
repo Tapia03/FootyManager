@@ -99,6 +99,15 @@ function Dashboard() {
           <h2 className="text-lg font-semibold mb-3">Meus saves</h2>
           {saves.isLoading ? (
             <p className="text-muted-foreground text-sm">Carregando…</p>
+          ) : saves.isError ? (
+            <div className="text-sm space-y-2">
+              <p className="text-destructive">
+                Não consegui carregar os saves: {(saves.error as any)?.message ?? "erro desconhecido"}
+              </p>
+              <Button size="sm" variant="outline" onClick={() => saves.refetch()}>
+                Tentar de novo
+              </Button>
+            </div>
           ) : saves.data?.length === 0 ? (
             <p className="text-muted-foreground text-sm">Nenhum save ainda. Crie o primeiro acima.</p>
           ) : (
