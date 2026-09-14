@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { checkAvailability } from "@/game/availability";
 import { positionLabel } from "@/game/types";
+import { contractsAtRisk, CONTRACT_RISK_LABEL, type ContractRisk } from "@/game/contracts";
 import { proposeLoanOut, recallLoan, exerciseLoanBuyOption } from "@/lib/loans";
 import { PageHeader, SubTabs, Pill, RatingBadge, EmptyState, type Tone } from "@/components/fm";
 import { DressingRoomView } from "@/components/dressing-room-view";
@@ -36,7 +37,7 @@ function Squad() {
   const [filter, setFilter] = useState("");
   const [sort, setSort] = useState<SortKey>("overall");
   const [posFilter, setPosFilter] = useState<string>("ALL");
-  const [view, setView] = useState<"list" | "room">("list");
+  const [view, setView] = useState<"list" | "room" | "contracts">("list");
 
   const save = useQuery({
     queryKey: ["save", saveId],
@@ -87,6 +88,14 @@ function Squad() {
     return c;
   }, [all]);
 
+  // Lista consolidada de contratos a vencer (item 03 do backlog FootSim) —
+  // em vez de só uma coluna solta na tabela geral, junta quem está dentro
+  // do radar de 1 temporada, ordenado por urgência, com nível de risco.
+  const atRiskContracts = useMemo(
+    () => (todayISO ? contractsAtRisk(all, todayISO) : []),
+    [all, todayISO],
+  );
+
   const filtered = useMemo(() => {
     let list = [...all];
     if (posFilter !== "ALL") list = list.filter((p) => p.position === posFilter);
@@ -135,6 +144,7 @@ function Squad() {
         onValueChange={setView}
         tabs={[
           { value: "list", label: "Lista de atletas" },
+          { value: "contracts", label: "Contratos a vencer", badge: atRiskContracts.length || undefined },
           { value: "room", label: "Dinâmica do vestiário" },
         ]}
       />
@@ -143,6 +153,8 @@ function Squad() {
         clubId && todayISO
           ? <DressingRoomView saveId={saveId} clubId={clubId} gameDate={todayISO} />
           : <div className="text-sm text-muted-foreground">Carregando…</div>
+      ) : view === "contracts" ? (
+        <ContractsAtRiskList saveId={saveId} players={atRiskContracts} />
       ) : (
       <>
       <SubTabs
@@ -284,6 +296,62 @@ function ContractBadge({ contractUntil, today }: { contractUntil: string | null;
   const days = Math.round((new Date(contractUntil + "T00:00:00Z").getTime() - new Date(today + "T00:00:00Z").getTime()) / 86_400_000);
   const tone = days <= 60 ? "text-danger" : days <= 180 ? "text-warn" : "text-muted-foreground";
   return <span className={`font-mono text-xs font-medium ${tone}`}>{days <= 0 ? "Vencido" : `${days}d`}</span>;
+}
+
+const RISK_TONE: Record<ContractRisk, Tone> = { critico: "danger", atencao: "warn" };
+
+function ContractsAtRiskList({ saveId, players }: { saveId: string; players: any[] }) {
+  if (players.length === 0) {
+    return (
+      <EmptyState
+        icon={Users}
+        title="Nenhum contrato vencendo em breve"
+        description="Jogadores com contrato terminando dentro de 1 temporada aparecem aqui, do mais urgente pro menos urgente."
+      />
+    );
+  }
+  return (
+    <Card className="overflow-hidden p-0">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] text-sm [font-variant-numeric:tabular-nums]">
+          <thead>
+            <tr className="border-b bg-elevated/60 text-left fm-eyebrow">
+              <th className="px-3 py-2.5 font-semibold">Jogador</th>
+              <th className="px-3 py-2.5 font-semibold">Pos</th>
+              <th className="px-3 py-2.5 font-semibold">OVR</th>
+              <th className="px-3 py-2.5 font-semibold">Risco</th>
+              <th className="px-3 py-2.5 font-semibold">Vence em</th>
+              <th className="px-3 py-2.5 text-right font-semibold">Salário</th>
+            </tr>
+          </thead>
+          <tbody>
+            {players.map((p) => (
+              <tr key={p.id} className="border-b border-border/50 transition-colors hover:bg-elevated/50">
+                <td className="px-3 py-2">
+                  <Link
+                    to="/saves/$saveId/players/$playerId"
+                    params={{ saveId, playerId: p.id }}
+                    className="font-medium hover:text-primary hover:underline"
+                  >
+                    {p.name}
+                  </Link>
+                </td>
+                <td className="px-3 py-2">
+                  <Pill tone={POS_TONE[p.position] ?? "neutral"}>{positionLabel(p.natural_position ?? p.position)}</Pill>
+                </td>
+                <td className="px-3 py-2"><RatingBadge value={p.overall} /></td>
+                <td className="px-3 py-2">
+                  {p.risk ? <Pill tone={RISK_TONE[p.risk as ContractRisk]}>{CONTRACT_RISK_LABEL[p.risk as ContractRisk]}</Pill> : <span className="text-muted-foreground">—</span>}
+                </td>
+                <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{p.daysRemaining}d</td>
+                <td className="px-3 py-2 text-right text-muted-foreground">{formatMoney(p.wage)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
 }
 
 function MiniBar({ v }: { v: number }) {

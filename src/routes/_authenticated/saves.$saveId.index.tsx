@@ -8,6 +8,7 @@ import { rateTacticalTeam, ratingToDisplay } from "@/game/tactics";
 import { computeStandings } from "@/game/standings";
 import { objectiveLabel, type SeasonObjective } from "@/game/board";
 import { analyzeCongestion } from "@/game/congestion";
+import { contractsAtRisk, CONTRACT_RISK_LABEL, type ContractRisk } from "@/game/contracts";
 import { positionLabel } from "@/game/types";
 import { effectiveKnowledge, tierFor, fuzzRange } from "@/game/scouting";
 import { HeroBanner, MetricCard, StatBar, EmptyState, Pill, RatingBadge } from "@/components/fm";
@@ -202,6 +203,15 @@ function Overview() {
     ? rateTacticalTeam(myPlayersFull.data as any, club.data as any, myLineup.data as any, save.data?.game_date as string | undefined)
     : null;
 
+  // Alerta proativo de contrato a vencer (item 03 do backlog FootSim) — o
+  // ponto do card é não deixar passar batido "por esquecimento"; só a coluna
+  // na tela de Elenco não resolve isso porque o usuário precisa ir procurar.
+  const todayForContracts = save.data?.game_date as string | undefined;
+  const atRiskContracts = todayForContracts && myPlayersFull.data
+    ? contractsAtRisk(myPlayersFull.data as any, todayForContracts)
+    : [];
+  const criticalContracts = atRiskContracts.filter((p) => p.risk === "critico").length;
+
   // --- derivados de tabela / meta -------------------------------------------
   const leagueSize = standings.data?.length ?? 0;
   const myIdx = standings.data?.findIndex((r) => r.club_id === clubId) ?? -1;
@@ -336,6 +346,34 @@ function Overview() {
             className="shrink-0 self-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold hover:border-foreground/20"
           >
             Rodar elenco
+          </Link>
+        </Card>
+      )}
+
+      {atRiskContracts.length > 0 && (
+        <Card className={`flex flex-wrap items-start gap-3 p-4 ${criticalContracts > 0 ? "border-danger/40 bg-danger/5" : "border-warn/40 bg-warn/5"}`}>
+          <AlertTriangle className={`mt-0.5 size-5 shrink-0 ${criticalContracts > 0 ? "text-danger" : "text-warn"}`} />
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-display text-sm font-semibold">
+                {atRiskContracts.length} contrato{atRiskContracts.length > 1 ? "s" : ""} vencendo
+              </span>
+              {criticalContracts > 0 && (
+                <Pill tone="danger">{criticalContracts} crítico{criticalContracts > 1 ? "s" : ""}</Pill>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {atRiskContracts.slice(0, 3).map((p: any) =>
+                `${p.name} (${CONTRACT_RISK_LABEL[p.risk as ContractRisk] ?? "—"}, ${p.daysRemaining}d)`,
+              ).join(" · ")}
+              {atRiskContracts.length > 3 ? ` · +${atRiskContracts.length - 3}` : ""}
+            </p>
+          </div>
+          <Link
+            to="/saves/$saveId/squad" params={{ saveId }}
+            className="shrink-0 self-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold hover:border-foreground/20"
+          >
+            Ver contratos
           </Link>
         </Card>
       )}
