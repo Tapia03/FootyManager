@@ -7,7 +7,8 @@ import { computeStandings } from "@/game/standings";
 import { analyzeOpponent } from "@/game/opponent-analysis";
 import { clubColors, contrastText } from "@/game/club-colors";
 import { playerScoutingNotes, type PlayerAttributes } from "@/game/attributes";
-import { PageHeader, SubTabs, Pill, StatBar, RatingBadge, ProsConsList, EmptyState } from "@/components/fm";
+import { effectiveKnowledge, tierFor, fuzzRange } from "@/game/scouting";
+import { PageHeader, SubTabs, Pill, StatBar, RatingBadge, ProsConsList, EmptyState, ratingTone } from "@/components/fm";
 import { BarChart3, Target, Zap, AlertTriangle, Compass, CalendarDays } from "lucide-react";
 import { useState } from "react";
 
@@ -53,7 +54,7 @@ function AnalysisPage() {
     queryFn: async () => {
       const [{ data: c }, { data: roster }] = await Promise.all([
         supabase.from("clubs").select("*").eq("id", oppId!).single(),
-        supabase.from("players").select("id, name, position, natural_position, overall, squad_number, attributes").eq("club_id", oppId!),
+        supabase.from("players").select("id, name, position, natural_position, overall, squad_number, attributes, scout_knowledge").eq("club_id", oppId!),
       ]);
       return { club: c, roster: roster ?? [] };
     },
@@ -104,6 +105,17 @@ function AnalysisPage() {
 
   const kit = opp.data?.club ? clubColors(opp.data.club as any) : { primary: "#334155", secondary: "#334155" };
   const kitText = contrastText(kit.primary);
+
+  // Overall de jogador do adversário respeita o mesmo fog of war da ficha
+  // do jogador/mercado (src/game/scouting.ts) — sem isso, dava pra "trapacear"
+  // e ver o número exato aqui mesmo pra um jogador ainda não escoutado.
+  const oppReputation = (opp.data?.club as any)?.reputation ?? 50;
+  function fuzzedOverall(p: { overall: number; scout_knowledge?: number | null; id: string }) {
+    const knowledge = effectiveKnowledge(p.scout_knowledge ?? 0, oppReputation, p.overall);
+    const tier = tierFor(knowledge);
+    const [lo, hi] = fuzzRange(p.overall, tier.overallSpread, `${p.id}-overall`);
+    return { display: lo === hi ? String(lo) : `${lo}-${hi}`, tone: ratingTone(Math.round((lo + hi) / 2)) };
+  }
 
   return (
     <div className="space-y-4">
@@ -207,7 +219,7 @@ function AnalysisPage() {
                       </Link>
                       <div className="flex items-center gap-1.5 text-xs text-danger">
                         <span>{dossier.dangerMan.natural_position ?? dossier.dangerMan.position} · Overall</span>
-                        <RatingBadge value={dossier.dangerMan.overall} />
+                        <RatingBadge value={fuzzedOverall(dossier.dangerMan).display} tone={fuzzedOverall(dossier.dangerMan).tone} />
                       </div>
                     </div>
                   </div>
@@ -224,18 +236,21 @@ function AnalysisPage() {
               <Card className="p-4">
                 <div className="fm-eyebrow mb-2">Titulares mais fortes</div>
                 <div className="space-y-1.5">
-                  {dossier.topPlayers.map((p) => (
-                    <div key={p.id} className="flex items-center justify-between text-xs">
-                      <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="truncate hover:text-primary hover:underline">
-                        {p.squad_number != null && <span className="mr-1 font-mono text-muted-foreground">{p.squad_number}</span>}
-                        {p.name}
-                      </Link>
-                      <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
-                        {p.natural_position ?? p.position}
-                        <RatingBadge value={p.overall} />
-                      </span>
-                    </div>
-                  ))}
+                  {dossier.topPlayers.map((p) => {
+                    const fuzzed = fuzzedOverall(p);
+                    return (
+                      <div key={p.id} className="flex items-center justify-between text-xs">
+                        <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="truncate hover:text-primary hover:underline">
+                          {p.squad_number != null && <span className="mr-1 font-mono text-muted-foreground">{p.squad_number}</span>}
+                          {p.name}
+                        </Link>
+                        <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
+                          {p.natural_position ?? p.position}
+                          <RatingBadge value={fuzzed.display} tone={fuzzed.tone} />
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </Card>
             </div>

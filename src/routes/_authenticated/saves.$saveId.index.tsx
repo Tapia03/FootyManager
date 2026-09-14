@@ -9,6 +9,7 @@ import { computeStandings } from "@/game/standings";
 import { objectiveLabel, type SeasonObjective } from "@/game/board";
 import { analyzeCongestion } from "@/game/congestion";
 import { positionLabel } from "@/game/types";
+import { effectiveKnowledge, tierFor, fuzzRange } from "@/game/scouting";
 import { HeroBanner, MetricCard, StatBar, EmptyState, Pill, RatingBadge } from "@/components/fm";
 import {
   LayoutDashboard, Trophy, Landmark, Users, Wallet, CalendarDays, Flame, ArrowRight, AlertTriangle,
@@ -174,6 +175,18 @@ function Overview() {
       return { club: oClub, topPlayers: sorted.slice(0, 5), avgOverall, rating };
     },
   });
+
+  // Overall individual de jogador do adversário respeita o mesmo fog of war
+  // da ficha do jogador/mercado (src/game/scouting.ts) — sem isso dava pra
+  // ver o número exato aqui mesmo pra alguém ainda não escoutado. avgOverall
+  // (força média do elenco) não entra nessa regra — é leitura tática de
+  // equipe, não o "segredo" de um jogador específico.
+  function fuzzedOverall(p: { overall: number; scout_knowledge?: number | null; id: string }) {
+    const knowledge = effectiveKnowledge(p.scout_knowledge ?? 0, opponentReport.data?.club?.reputation ?? 50, p.overall);
+    const tier = tierFor(knowledge);
+    const [lo, hi] = fuzzRange(p.overall, tier.overallSpread, `${p.id}-overall`);
+    return lo === hi ? String(lo) : `${lo}-${hi}`;
+  }
 
   const myPlayersFull = useQuery({
     queryKey: ["players", clubId],
@@ -384,7 +397,7 @@ function Overview() {
                 <div className="flex flex-wrap gap-1.5">
                   {opponentReport.data.topPlayers.map((p: any) => (
                     <Pill key={p.name} tone="neutral">
-                      {p.name} <span className="opacity-60">· {p.position} {p.overall}</span>
+                      {p.name} <span className="opacity-60">· {p.position} {fuzzedOverall(p)}</span>
                     </Pill>
                   ))}
                 </div>

@@ -39,12 +39,16 @@ function clamp(v: number, lo: number, hi: number) {
 
 /**
  * Conhecimento público de base — o que qualquer torcedor/analista já sabe
- * sobre um jogador sem escalar olheiro nenhum. Clubes e jogadores mais
- * badalados são mais conhecidos, mas nunca o suficiente pra saber os números
- * exatos (isso exige escalar olheiro de verdade).
+ * sobre um jogador sem escalar olheiro nenhum. Calibrado contra dados reais
+ * de uma base FM24 importada (reputação de clube 36-92, overall 40-95):
+ * um astro global de um clube badalado (ex. Mbappé 95 no Real Madrid rep91)
+ * já nasce "Conhecido a fundo" (≥85, atributos exatos) — pedido explícito
+ * do backlog ("jogador famoso mostra atributos exatos pra todo mundo").
+ * Um jogador mediano de clube pequeno (ex. overall 50/reputação 40) fica
+ * perto de 0 ("Pouco conhecido") e só sobe de verdade escalando olheiro.
  */
 export function baseKnowledge(clubReputation: number, overall: number): number {
-  return clamp(Math.round(clubReputation * 0.5 + overall * 0.6 - 45), 0, 54);
+  return clamp(Math.round(overall * 1.1 + clubReputation * 0.6 - 72), 0, 100);
 }
 
 export function effectiveKnowledge(scoutKnowledge: number, clubReputation: number, overall: number): number {
