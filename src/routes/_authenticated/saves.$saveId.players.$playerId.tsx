@@ -52,7 +52,21 @@ function PlayerDetail() {
 
   const player = useQuery({
     queryKey: ["player", playerId],
-    queryFn: async () => (await supabase.from("players").select("*, clubs!players_club_id_fkey(name, short_name, reputation, primary_color, secondary_color)").eq("id", playerId).single()).data,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("players").select("*, clubs!players_club_id_fkey(name, short_name, reputation, primary_color, secondary_color)")
+        .eq("id", playerId).single();
+      // PGRST116 = .single() genuinely não achou linha nenhuma (jogador não
+      // existe de verdade) — qualquer OUTRO erro (503/rede/timeout do banco
+      // de dev flakeando) precisa VIRAR erro de query, não "jogador null",
+      // senão um 503 passageiro renderizava "Jogador não encontrado" como se
+      // o dado tivesse sumido de verdade.
+      if (error) {
+        if (error.code === "PGRST116") return null;
+        throw error;
+      }
+      return data;
+    },
   });
 
   const assignment = useQuery({
@@ -130,6 +144,14 @@ function PlayerDetail() {
   });
 
   if (player.isLoading) return <div className="text-muted-foreground">Carregando…</div>;
+  if (player.isError) {
+    return (
+      <div className="flex flex-col items-start gap-2 text-muted-foreground">
+        <p>Não foi possível carregar este jogador agora.</p>
+        <Button size="sm" variant="outline" onClick={() => player.refetch()}>Tentar de novo</Button>
+      </div>
+    );
+  }
   const p = player.data as any;
   if (!p) return <div>Jogador não encontrado.</div>;
 

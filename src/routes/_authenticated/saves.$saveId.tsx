@@ -412,6 +412,20 @@ function SaveLayout() {
   if (save.isLoading || club.isLoading) {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Carregando…</div>;
   }
+  // Falha de rede/servidor passageira não pode virar "essa save não tem
+  // clube" — antes disso um 503 transitório na consulta derrubava o usuário
+  // direto pra tela de "Configurar save" (parecendo que o progresso sumiu),
+  // quando na verdade era só o banco de dev tropeçando por um instante.
+  if (save.isError || club.isError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-muted-foreground">
+        <p>Não foi possível carregar esta save agora.</p>
+        <Button size="sm" variant="outline" onClick={() => { save.refetch(); club.refetch(); }}>
+          Tentar de novo
+        </Button>
+      </div>
+    );
+  }
   if (!save.data?.my_club_id) {
     return <RedirectToSetup saveId={saveId} />;
   }
