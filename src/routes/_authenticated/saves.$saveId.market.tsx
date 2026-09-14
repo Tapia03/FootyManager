@@ -5,14 +5,15 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatMoney } from "@/lib/game-hooks";
-import { makeOutgoingOffer, respondToOffer, type DealType } from "@/lib/transfer-offers";
+import { makeOutgoingOffer, respondToOffer, signFreeAgent, type DealType } from "@/lib/transfer-offers";
 import { startScouting, cancelScouting } from "@/lib/scouting";
 import { effectiveKnowledge, fuzzRange, tierFor, maxConcurrentScouting } from "@/game/scouting";
 import { initialBidFee, loanReferenceValue } from "@/game/transfer-negotiation";
+import { isTransferWindowOpen, currentWindowLabel, daysUntilNextWindow } from "@/game/transfer-window";
 import { dismissTransferRequest, listTransferRequest } from "@/lib/transfer-requests";
 import { recommendSignings } from "@/game/scout-recommendations";
 import { PageHeader, EmptyState } from "@/components/fm";
-import { ArrowLeftRight, Search } from "lucide-react";
+import { ArrowLeftRight, Search, AlertTriangle, UserPlus, CheckCircle2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -29,6 +30,7 @@ function Market() {
   const [counterFees, setCounterFees] = useState<Record<string, number>>({});
   const [dealTypes, setDealTypes] = useState<Record<string, DealType>>({});
   const [buyOptions, setBuyOptions] = useState<Record<string, number>>({});
+  const [faWages, setFaWages] = useState<Record<string, number>>({});
 
   const save = useQuery({
     queryKey: ["save", saveId],
@@ -87,6 +89,11 @@ function Market() {
         .select("id, name, age, position, overall, market_value, wage, club_id, scout_knowledge, clubs!players_club_id_fkey(name, short_name, reputation)")
         .eq("save_id", saveId)
         .neq("club_id", myClubId!)
+        // Agente livre (club_id null) tem seção própria mais abaixo — sem
+        // janela, sem taxa, sem negociação de ida-e-volta (ver signFreeAgent).
+        // Explícito em vez de contar com o .neq() acima já excluir NULL por
+        // três-valores do SQL, pra deixar a intenção clara no código.
+        .not("club_id", "is", null)
         .gte("overall", minOvr)
         .order("overall", { ascending: false })
         .limit(60);
@@ -95,6 +102,40 @@ function Market() {
       if (error) throw error;
       return data ?? [];
     },
+  });
+
+  // Agentes livres — item 04 do backlog FootSim: disponíveis a qualquer
+  // momento, sem depender da janela de transferência (ver signFreeAgent em
+  // src/lib/transfer-offers.ts, que nunca checa isTransferWindowOpen).
+  const freeAgents = useQuery({
+    queryKey: ["free-agents", saveId, q],
+    enabled: !!myClubId,
+    queryFn: async () => {
+      let query = supabase
+        .from("players")
+        .select("id, name, age, position, overall, wage, attributes")
+        .eq("save_id", saveId)
+        .is("club_id", null)
+        .order("overall", { ascending: false })
+        .limit(30);
+      if (q) query = query.ilike("name", `%${q}%`);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const signFA = useMutation({
+    mutationFn: async (player: any) => {
+      const wage = faWages[player.id] ?? Math.round((player.wage || player.overall * 400) * 1.05);
+      return { player, wage, result: await signFreeAgent(saveId, myClubId!, player, wage, today!) };
+    },
+    onSuccess: ({ player, result }) => {
+      if (result.accepted) toast.success(`${player.name} assinou por ${formatMoney(result.wage)}/quinzena.`);
+      else toast.error(`${player.name} achou o salário baixo — tente um valor maior.`);
+      qc.invalidateQueries();
+    },
+    onError: (e: any) => toast.error(e.message ?? "Falha"),
   });
 
   // Negociações pendentes envolvendo o meu clube (dos dois lados).
@@ -214,10 +255,32 @@ function Market() {
   });
 
   const list = useMemo(() => players.data ?? [], [players.data]);
+  const windowOpen = today ? isTransferWindowOpen(today) : true;
+  const windowLabel = today ? currentWindowLabel(today) : null;
+  const daysToWindow = today ? daysUntilNextWindow(today) : 0;
 
   return (
     <div className="space-y-4">
       <PageHeader icon={ArrowLeftRight} title="Mercado & olheiros" subtitle="Propostas, negociações, scouting e busca de reforços." />
+
+      {!windowOpen && (
+        <Card className="flex flex-wrap items-center gap-3 border-warn/40 bg-warn/5 p-4">
+          <AlertTriangle className="size-5 shrink-0 text-warn" />
+          <div className="min-w-0 flex-1">
+            <div className="font-display text-sm font-semibold">Janela de transferências fechada</div>
+            <p className="text-xs text-muted-foreground">
+              Só dá pra negociar com outro clube na janela de verão (jun-ago) ou de inverno (janeiro) — reabre em {daysToWindow} dia{daysToWindow === 1 ? "" : "s"}.
+              Agentes livres continuam disponíveis a qualquer momento, sem taxa e sem espera — ver abaixo.
+            </p>
+          </div>
+        </Card>
+      )}
+      {windowOpen && windowLabel && (
+        <Card className="flex items-center gap-2 border-ok/40 bg-ok/5 p-3">
+          <CheckCircle2 className="size-4 shrink-0 text-ok" />
+          <span className="text-xs font-medium text-ok">{windowLabel} aberta — negociações com outros clubes liberadas.</span>
+        </Card>
+      )}
 
       {incoming.length > 0 && (
         <Card className="p-4">
@@ -337,6 +400,43 @@ function Market() {
         </Card>
       )}
 
+      <Card className="p-4">
+        <div className="mb-1 flex items-center gap-2 fm-eyebrow">
+          <UserPlus className="size-3.5" /> Agentes livres
+        </div>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Sem clube, sem taxa de transferência, sem janela — proponha um salário e o empresário aceita ou recusa na hora.
+        </p>
+        {freeAgents.data && freeAgents.data.length > 0 ? (
+          <div className="space-y-2">
+            {freeAgents.data.map((p: any) => (
+              <div key={p.id} className="flex flex-wrap items-center gap-2 border rounded-md p-2">
+                <div className="min-w-[180px] flex-1 text-sm">
+                  <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="font-medium hover:underline">
+                    {p.name}
+                  </Link>
+                  <span className="text-xs text-muted-foreground"> · {p.position} · OVR {p.overall} · {p.age} anos</span>
+                </div>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  Salário/quinzena
+                  <input
+                    type="number"
+                    className="w-28 rounded border bg-transparent px-2 py-1 text-right text-sm text-foreground"
+                    value={faWages[p.id] ?? Math.round((p.wage || p.overall * 400) * 1.05)}
+                    onChange={(e) => setFaWages((s) => ({ ...s, [p.id]: Number(e.target.value) }))}
+                  />
+                </label>
+                <Button size="sm" onClick={() => signFA.mutate(p)} disabled={signFA.isPending}>
+                  Contratar
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">Nenhum agente livre disponível agora.</p>
+        )}
+      </Card>
+
       <Card className="p-4 flex flex-wrap items-center gap-3">
         <Input placeholder="Buscar jogador…" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-xs" />
         <label className="text-sm flex items-center gap-2">
@@ -424,9 +524,10 @@ function Market() {
                   <td className="px-3 py-2">
                     <Button
                       size="sm" onClick={() => propose.mutate(p)}
-                      disabled={negotiating || propose.isPending || (club.data?.transfer_budget ?? 0) < fee}
+                      disabled={negotiating || propose.isPending || !windowOpen || (club.data?.transfer_budget ?? 0) < fee}
+                      title={!windowOpen ? "Janela de transferências fechada" : undefined}
                     >
-                      {negotiating ? "Negociando…" : "Propor"}
+                      {negotiating ? "Negociando…" : !windowOpen ? "Janela fechada" : "Propor"}
                     </Button>
                   </td>
                   <td className="px-3 py-2">

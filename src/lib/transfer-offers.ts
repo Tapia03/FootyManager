@@ -3,6 +3,8 @@ import {
   evaluateAsBuyer, evaluateAsSeller, initialBidFee, MAX_NEGOTIATION_ROUNDS,
   loanReferenceValue, LOAN_DURATION_DAYS,
 } from "@/game/transfer-negotiation";
+import { evaluateContractOffer, MAX_CONTRACT_ROUNDS } from "@/game/contract-negotiation";
+import { isTransferWindowOpen } from "@/game/transfer-window";
 import { nextSquadNumber } from "@/game/squad-numbers";
 
 export type DealType = "permanent" | "loan";
@@ -107,6 +109,12 @@ export async function makeOutgoingOffer(
   saveId: string, myClubId: string, player: PlayerMini, fee: number, today: string, dealType: DealType = "permanent",
   loanBuyOption?: number | null,
 ): Promise<OfferOutcome> {
+  // Item 04 do backlog FootSim: janela de transferência só trava negociação
+  // ENTRE clubes — agente livre (player.club_id null) nunca chega aqui, ele
+  // usa signFreeAgent abaixo, que não checa janela nenhuma de propósito.
+  if (!isTransferWindowOpen(today)) {
+    throw new Error("Janela de transferências fechada — só dá pra negociar com outro clube durante a janela (verão ou janeiro). Agentes livres continuam disponíveis a qualquer momento.");
+  }
   const { data: seller } = await supabase.from("clubs").select("id, transfer_budget, reputation, name").eq("id", player.club_id!).single();
   const { data: buyer } = await supabase.from("clubs").select("id, transfer_budget, reputation, name").eq("id", myClubId).single();
   if (!seller || !buyer) throw new Error("Clube não encontrado");
@@ -203,10 +211,17 @@ export async function respondToOffer(
 // jogadores do usuário.
 // -----------------------------------------------------------------------------
 export async function refreshTransferOffers(saveId: string, myClubId: string, today: string): Promise<void> {
+  // Propostas já pendentes continuam podendo ser respondidas fora da janela
+  // (só NOVAS sondagens de IA ficam paradas) — expirar/negociar o que já tá
+  // em aberto não é a mesma coisa que abrir negociação nova.
+  const windowOpen = isTransferWindowOpen(today);
+
   const { error: expireError } = await supabase.from("transfer_offers")
     .update({ status: "expired" })
     .eq("save_id", saveId).eq("status", "pending").eq("last_actor", "ai").lt("expires_date", today);
   if (expireError) throw expireError;
+
+  if (!windowOpen) return; // fora da janela, nenhuma sondagem NOVA de IA aparece
 
   const { data: pending } = await supabase.from("transfer_offers")
     .select("id").eq("save_id", saveId).eq("status", "pending");
@@ -235,4 +250,61 @@ export async function refreshTransferOffers(saveId: string, myClubId: string, to
     rounds: 1, expires_date: addDays(today, OFFER_LIFETIME_DAYS),
   });
   if (error) throw error;
+}
+
+export interface FreeAgentSignOutcome {
+  accepted: boolean;
+  wage: number;
+}
+
+const FREE_AGENT_CONTRACT_YEARS = 2;
+
+// -----------------------------------------------------------------------------
+// Contratar agente livre — item 04 do backlog FootSim. Sem clube vendedor,
+// sem taxa, sem janela de transferência (ver isTransferWindowOpen — essa
+// função de propósito NUNCA chama ela): é pegar ou largar num salário, na
+// hora, o que já é o "mais rápido e barato" que o card pede. Reaproveita a
+// mesma avaliação de proposta de renovação de contrato (contract-negotiation.ts)
+// no último round, que só devolve accept/reject — nunca contra-proposta.
+// -----------------------------------------------------------------------------
+export async function signFreeAgent(
+  saveId: string, myClubId: string,
+  player: { id: string; name: string; wage: number | null; overall: number; age: number; position: string },
+  offeredWage: number, today: string,
+): Promise<FreeAgentSignOutcome> {
+  const decision = evaluateContractOffer({
+    offeredWage,
+    currentWage: player.wage || Math.round(offeredWage * 0.8),
+    overall: player.overall, age: player.age,
+    round: MAX_CONTRACT_ROUNDS,
+  });
+  if (decision.decision !== "accept") return { accepted: false, wage: offeredWage };
+
+  const patch: any = {
+    club_id: myClubId, wage: offeredWage, contract_until: addDays(today, FREE_AGENT_CONTRACT_YEARS * 365), club_since: today,
+    loaned_from_club_id: null, loan_return_date: null, loan_buy_option: null, release_clause: null,
+  };
+  try {
+    const { data: existing } = await supabase.from("players").select("squad_number").eq("club_id", myClubId);
+    patch.squad_number = nextSquadNumber((existing ?? []).map((r) => r.squad_number), player.position);
+  } catch {
+    // número é cosmético — se a consulta falhar, o jogador entra sem número
+  }
+
+  const { error: playerError } = await supabase.from("players").update(patch).eq("id", player.id);
+  if (playerError) throw playerError;
+
+  const { error: financeError } = await supabase.from("finance_entries").insert({
+    save_id: saveId, club_id: myClubId, entry_date: today, kind: "transfer_in", amount: 0,
+    description: `Contratação (agente livre): ${player.name}`,
+  });
+  if (financeError) throw financeError;
+
+  const { error: transferRowError } = await supabase.from("transfers").insert({
+    save_id: saveId, player_id: player.id, from_club_id: null, to_club_id: myClubId,
+    fee: 0, status: "completed", proposal_date: today, resolved_date: today,
+  });
+  if (transferRowError) throw transferRowError;
+
+  return { accepted: true, wage: offeredWage };
 }

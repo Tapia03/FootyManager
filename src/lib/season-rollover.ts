@@ -384,7 +384,10 @@ async function agePlayersAndReleaseContracts(
         patch.wage = Math.round((p.wage ?? 10000) * (1 + Math.random() * 0.15));
       } else {
         // Libera contrato vencido — vira agente livre (club_id = null).
+        // contract_until some junto: agente livre não tem contrato nenhum,
+        // deixar a data velha aqui faria parecer que ele ainda tem um.
         patch.club_id = null;
+        patch.contract_until = null;
       }
     }
 
