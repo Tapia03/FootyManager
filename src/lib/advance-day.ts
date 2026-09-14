@@ -23,7 +23,7 @@ const formatBRL = (n: number) =>
   Math.abs(n) >= 1_000_000 ? `R$ ${(n / 1_000_000).toFixed(1)}M`
   : Math.abs(n) >= 1_000 ? `R$ ${(n / 1_000).toFixed(0)}k`
   : `R$ ${Math.round(n)}`;
-import { sponsorIncome, gateIncome, facilityFactor } from "@/game/board";
+import { sponsorIncome, gateIncome, facilityFactor, fanTemperamentFromClubId } from "@/game/board";
 import { pickAiMatchTactics } from "@/game/ai-tactics";
 import { adjustMarketValue, applyFormMarketMomentum } from "@/game/valuation";
 
@@ -321,7 +321,10 @@ export async function advanceDays(
     // virava um lançamento no extrato sem de fato entrar no caixa — ver
     // bloco 6 abaixo, onde clubBudgetDelta é aplicado de uma vez).
     if (homeClub && !backgroundClubIds.has(m.home_club_id)) {
-      const { attendance, amount } = gateIncome(homeClub.stadium_capacity ?? 20_000, homeClub.reputation ?? 50, isDerby);
+      const { attendance, amount } = gateIncome(
+        homeClub.stadium_capacity ?? 20_000, homeClub.reputation ?? 50, isDerby,
+        Math.random, fanTemperamentFromClubId(m.home_club_id),
+      );
       clubBudgetDelta.set(m.home_club_id, (clubBudgetDelta.get(m.home_club_id) ?? 0) + amount);
       if (m.home_club_id === myClubId) {
         financeEntries.push({
@@ -859,7 +862,7 @@ export async function advanceDays(
             category: "board", sender: "Presidente",
             subject: o.status === "met" ? "Objetivo da temporada cumprido" : "Objetivo da temporada não cumprido",
             body: o.status === "met"
-              ? `Parabéns pela temporada. Terminamos em ${o.finalPosition}º e a diretoria está satisfeita com o trabalho (confiança ${o.confidenceDelta >= 0 ? "+" : ""}${o.confidenceDelta}).`
+              ? `Parabéns pela temporada. Terminamos em ${o.finalPosition}º e a diretoria está satisfeita com o trabalho (confiança ${o.confidenceDelta >= 0 ? "+" : ""}${o.confidenceDelta}).${o.sponsorBonus > 0 ? ` O patrocinador liberou um bônus de ${formatBRL(o.sponsorBonus)} pelo desempenho.` : ""}`
               : `Terminamos a temporada em ${o.finalPosition}º, abaixo do que a diretoria esperava. A confiança no seu trabalho caiu (${o.confidenceDelta}). Precisamos de resultados melhores.`,
             link: `/saves/${saveId}/board`, linkLabel: "Diretoria",
           });

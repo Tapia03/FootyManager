@@ -292,10 +292,63 @@ export function sponsorIncome(clubReputation: number): number {
 }
 
 // -----------------------------------------------------------------------------
+// Bônus de patrocínio por desempenho (item 13 do backlog FootSim) — o repasse
+// mensal acima é fixo, sem negociação; isso aqui é a "meta específica" que o
+// card pede (ex. "bônus por título"). Reaproveita a MESMA avaliação de
+// objetivo de temporada do item 12 (season_objectives) em vez de inventar um
+// contrato de patrocínio à parte — só paga quando a meta é batida, e quanto
+// mais alta a faixa (vencer o campeonato vale muito mais em marketing que só
+// evitar o rebaixamento), maior o bônus. "Lutar contra o rebaixamento"
+// (sobreviver contra a expectativa) rende o mesmo multiplicador de
+// "campanha de meio de tabela" — sobreviver contra tudo também vira notícia.
+// -----------------------------------------------------------------------------
+const SPONSOR_BONUS_MULTIPLIER: Record<ObjectiveKind, number> = {
+  win_league: 3, top4: 1.6, top6: 1.2, top_half: 0.8, mid_table: 0.5, avoid_relegation: 0.3, fight_relegation: 0.5,
+};
+
+export function sponsorObjectiveBonus(clubReputation: number, obj: SeasonObjective, finalPosition: number): number {
+  if (evaluateObjective(obj, finalPosition) !== "met") return 0;
+  return Math.round(clubReputation * 3_000 * (SPONSOR_BONUS_MULTIPLIER[obj.kind] ?? 0.5));
+}
+
+// -----------------------------------------------------------------------------
+// Personalidade da torcida (item 13 do backlog FootSim) — nenhuma base real
+// traz "cultura do torcedor" por clube, então é procedural (mesmo padrão de
+// brasão/kit gerado quando falta asset real): uma função pura e determinística
+// do ID do clube, sem coluna nova nem I/O — o mesmo clube sempre tem a mesma
+// personalidade a vida toda do save, sem precisar armazenar nada.
+// - Apaixonada: estádio cheio quase sempre (piso de ocupação alto, variação
+//   pequena) e clássico importa ainda mais.
+// - Exigente: só lota quando o time está bem — teto mais alto, mas piso bem
+//   mais baixo e variação grande (estádio some quando a torcida não empolga).
+// - Tradicional: a curva original, sem efeito de personalidade.
+// -----------------------------------------------------------------------------
+export type FanTemperament = "apaixonada" | "exigente" | "tradicional";
+
+export const FAN_TEMPERAMENT_LABEL: Record<FanTemperament, string> = {
+  apaixonada: "Apaixonada", exigente: "Exigente", tradicional: "Tradicional",
+};
+
+export function fanTemperamentFromClubId(clubId: string): FanTemperament {
+  let h = 0;
+  for (let i = 0; i < clubId.length; i++) h = (h * 31 + clubId.charCodeAt(i)) >>> 0;
+  return (["apaixonada", "exigente", "tradicional"] as const)[h % 3];
+}
+
+interface OccupancyProfile { floor: number; ceiling: number; varianceSpan: number; derbyBoost: number; }
+const TEMPERAMENT_OCCUPANCY: Record<FanTemperament, OccupancyProfile> = {
+  apaixonada: { floor: 0.55, ceiling: 0.95, varianceSpan: 0.08, derbyBoost: 1.25 },
+  exigente: { floor: 0.25, ceiling: 1.00, varianceSpan: 0.35, derbyBoost: 1.05 },
+  tradicional: { floor: 0.40, ceiling: 0.95, varianceSpan: 0.20, derbyBoost: 1.15 },
+};
+
+// -----------------------------------------------------------------------------
 // Bilheteria — antes era um valor fixo aleatório igual pra qualquer clube;
 // agora depende da capacidade real do estádio (já existe em clubs.stadium_capacity,
 // só nunca tinha sido usada) e da reputação (público maior em clube grande),
-// com bônus extra em clássico. Ver src/lib/advance-day.ts.
+// com bônus extra em clássico — e, desde o item 13, da personalidade da
+// torcida (piso/teto/variação de ocupação mudam por clube). Ver
+// src/lib/advance-day.ts.
 // -----------------------------------------------------------------------------
 const TICKET_PRICE = 45;
 
@@ -304,10 +357,12 @@ export function gateIncome(
   clubReputation: number,
   isDerby: boolean,
   rng: () => number = Math.random,
+  temperament: FanTemperament = "tradicional",
 ): { attendance: number; amount: number } {
-  const baseOccupancy = clamp(0.35 + clubReputation / 130, 0.4, 0.95);
-  const derbyBoost = isDerby ? 1.15 : 1;
-  const variance = 0.9 + rng() * 0.2; // ±10%
+  const profile = TEMPERAMENT_OCCUPANCY[temperament];
+  const baseOccupancy = clamp(0.35 + clubReputation / 130, profile.floor, profile.ceiling);
+  const derbyBoost = isDerby ? profile.derbyBoost : 1;
+  const variance = (1 - profile.varianceSpan / 2) + rng() * profile.varianceSpan;
   const occupancy = clamp(baseOccupancy * derbyBoost * variance, 0, 1);
   const attendance = Math.round(stadiumCapacity * occupancy);
   const amount = Math.round(attendance * TICKET_PRICE);

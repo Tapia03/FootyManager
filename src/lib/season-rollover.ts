@@ -2,7 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { computeStandings, type StandingRow } from "@/game/standings";
 import { promotionSlots } from "@/game/promotion";
 import { generateScheduleForSave } from "./generate-schedule";
-import { confidenceDelta, managerReputationDelta, clubReputationDelta, transferBudgetInjection } from "@/game/board";
+import { confidenceDelta, managerReputationDelta, clubReputationDelta, transferBudgetInjection, sponsorObjectiveBonus } from "@/game/board";
 import { ensureSeasonObjective } from "./board";
 import { rollRetirement } from "@/game/retirement";
 import { generateYouthIntake } from "./youth";
@@ -34,7 +34,7 @@ export interface RolloverResult {
   fired?: boolean;
   firedFromClub?: string;
   seasonAwards?: { kind: "top_scorer" | "player_of_season"; playerName: string; value: number }[];
-  objectiveOutcome?: { status: "met" | "missed"; finalPosition: number; confidenceDelta: number };
+  objectiveOutcome?: { status: "met" | "missed"; finalPosition: number; confidenceDelta: number; sponsorBonus: number };
   // Preenchido só quando o CLUBE DO USUÁRIO muda de divisão.
   promotion?: { competitionName: string };
   relegation?: { competitionName: string };
@@ -135,16 +135,29 @@ export async function checkAndRolloverSeason(saveId: string): Promise<RolloverRe
           .eq("club_id", myClubId).eq("competition_id", comp.id).eq("season", comp.season).single();
         if (obj && obj.status === "in_progress") {
           const finalPosition = myPosition + 1;
-          const delta = confidenceDelta({ kind: obj.kind as any, target: obj.target }, finalPosition);
+          const objTyped = { kind: obj.kind as any, target: obj.target };
+          const delta = confidenceDelta(objTyped, finalPosition);
           const status = delta >= 0 ? "met" : "missed";
-          objectiveOutcome = { status, finalPosition, confidenceDelta: delta };
           const { error: objError } = await supabase.from("season_objectives").update({ status, final_position: finalPosition }).eq("id", obj.id);
           if (objError) throw objError;
-          const { data: club } = await supabase.from("clubs").select("name, board_confidence").eq("id", myClubId).single();
+          const { data: club } = await supabase.from("clubs").select("name, board_confidence, budget, reputation").eq("id", myClubId).single();
+          // Bônus de patrocínio por desempenho (item 13 do backlog FootSim) —
+          // só paga quando a meta é batida, reaproveitando a mesma avaliação.
+          const sponsorBonus = club ? sponsorObjectiveBonus(club.reputation ?? 50, objTyped, finalPosition) : 0;
+          objectiveOutcome = { status, finalPosition, confidenceDelta: delta, sponsorBonus };
           if (club) {
             const next = Math.max(0, Math.min(100, club.board_confidence + delta));
-            const { error: confError } = await supabase.from("clubs").update({ board_confidence: next }).eq("id", myClubId);
+            const clubPatch: any = { board_confidence: next };
+            if (sponsorBonus > 0) clubPatch.budget = (club.budget ?? 0) + sponsorBonus;
+            const { error: confError } = await supabase.from("clubs").update(clubPatch).eq("id", myClubId);
             if (confError) throw confError;
+            if (sponsorBonus > 0) {
+              const { error: financeError } = await supabase.from("finance_entries").insert({
+                save_id: saveId, club_id: myClubId, entry_date: lastDate, kind: "sponsor",
+                amount: sponsorBonus, description: `Bônus de patrocínio — meta da temporada cumprida`,
+              });
+              if (financeError) throw financeError;
+            }
             if (next <= 0 && !fired) {
               fired = true;
               firedFromClub = club.name;

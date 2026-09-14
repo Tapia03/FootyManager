@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   generateObjective, objectiveLabel, evaluateObjective, confidenceDelta, managerReputationDelta,
+  sponsorObjectiveBonus, fanTemperamentFromClubId, gateIncome, FAN_TEMPERAMENT_LABEL,
 } from "../board";
 
 const LEAGUE_SIZE = 20;
@@ -104,5 +105,61 @@ describe("managerReputationDelta", () => {
   });
   it("não bater a meta rende reputação negativa", () => {
     expect(managerReputationDelta(8, 4, false)).toBeLessThan(0);
+  });
+});
+
+describe("sponsorObjectiveBonus — item 13 do backlog FootSim", () => {
+  it("não paga nada quando a meta não é batida", () => {
+    expect(sponsorObjectiveBonus(70, { kind: "top4", target: 4 }, 8)).toBe(0);
+  });
+  it("paga quando a meta é batida", () => {
+    expect(sponsorObjectiveBonus(70, { kind: "top4", target: 4 }, 3)).toBeGreaterThan(0);
+  });
+  it("vencer o campeonato rende um bônus bem maior que só evitar o rebaixamento, pro mesmo clube", () => {
+    const title = sponsorObjectiveBonus(70, { kind: "win_league", target: 1 }, 1);
+    const survival = sponsorObjectiveBonus(70, { kind: "avoid_relegation", target: 16 }, 16);
+    expect(title).toBeGreaterThan(survival * 2);
+  });
+  it("sobreviver lutando contra o rebaixamento (fight_relegation) também rende bônus — vira notícia", () => {
+    expect(sponsorObjectiveBonus(70, { kind: "fight_relegation", target: 16 }, 16)).toBeGreaterThan(0);
+  });
+});
+
+describe("fanTemperamentFromClubId — item 13 do backlog FootSim", () => {
+  it("é determinístico — o mesmo ID sempre dá a mesma personalidade", () => {
+    const a = fanTemperamentFromClubId("club-abc-123");
+    const b = fanTemperamentFromClubId("club-abc-123");
+    expect(a).toBe(b);
+  });
+  it("só produz valores válidos", () => {
+    const valid = new Set(Object.keys(FAN_TEMPERAMENT_LABEL));
+    for (const id of ["a", "b", "c", "manchester-city-id", "6cea41ad-e0c9-4459-972b-99640b4b0123"]) {
+      expect(valid.has(fanTemperamentFromClubId(id))).toBe(true);
+    }
+  });
+  it("IDs diferentes tendem a dar personalidades diferentes (não é sempre a mesma)", () => {
+    const ids = Array.from({ length: 30 }, (_, i) => `club-${i}`);
+    const results = new Set(ids.map(fanTemperamentFromClubId));
+    expect(results.size).toBeGreaterThan(1);
+  });
+});
+
+describe("gateIncome — personalidade da torcida muda a curva de ocupação", () => {
+  const rngHigh = () => 1; // topo da variação
+  const rngLow = () => 0; // piso da variação
+
+  it("torcida apaixonada nunca esvazia o estádio, mesmo no pior sorteio de variação", () => {
+    const r = gateIncome(50_000, 40, false, rngLow, "apaixonada");
+    expect(r.attendance / 50_000).toBeGreaterThan(0.4);
+  });
+  it("torcida exigente pode esvaziar bem mais o estádio no pior sorteio, pro mesmo clube", () => {
+    const apaixonada = gateIncome(50_000, 40, false, rngLow, "apaixonada");
+    const exigente = gateIncome(50_000, 40, false, rngLow, "exigente");
+    expect(exigente.attendance).toBeLessThan(apaixonada.attendance);
+  });
+  it("sem personalidade informada, usa a curva tradicional (comportamento de antes do item 13)", () => {
+    const semTemperamento = gateIncome(50_000, 60, false, () => 0.5);
+    const tradicional = gateIncome(50_000, 60, false, () => 0.5, "tradicional");
+    expect(semTemperamento).toEqual(tradicional);
   });
 });

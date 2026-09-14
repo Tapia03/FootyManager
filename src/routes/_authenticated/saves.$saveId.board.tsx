@@ -8,17 +8,24 @@ import { computeStandings } from "@/game/standings";
 import {
   objectiveLabel, BOARD_CONFIDENCE_CRITICAL,
   BOARD_REQUEST_CATALOG, MAX_BOARD_REQUESTS_PER_SEASON, evaluateBoardRequest,
+  fanTemperamentFromClubId, FAN_TEMPERAMENT_LABEL, type FanTemperament,
   type SeasonObjective, type BoardRequestKind,
 } from "@/game/board";
 import { ensureSeasonObjective, submitBoardRequest } from "@/lib/board";
 import { PageHeader, MeterBar, Pill } from "@/components/fm";
-import { Landmark, Dumbbell, GraduationCap, Building2, Send } from "lucide-react";
+import { Landmark, Dumbbell, GraduationCap, Building2, Send, Flame } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/saves/$saveId/board")({
   component: BoardPage,
 });
+
+const FAN_TEMPERAMENT_HINT: Record<FanTemperament, string> = {
+  apaixonada: "estádio quase sempre cheio",
+  exigente: "só lota quando o time empolga",
+  tradicional: "ocupação padrão",
+};
 
 function BoardPage() {
   const { saveId } = useParams({ from: "/_authenticated/saves/$saveId/board" });
@@ -158,7 +165,7 @@ function BoardPage() {
 
       <Card className="p-4">
         <div className="fm-eyebrow mb-3">Instalações</div>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-4">
           <Facility icon={Dumbbell} label="Centro de treinamento" level={(club.data as any)?.training_facilities ?? 3} />
           <Facility icon={GraduationCap} label="Categoria de base" level={(club.data as any)?.youth_facilities ?? 3} />
           <div className="rounded-lg border bg-elevated/40 p-3">
@@ -168,6 +175,15 @@ function BoardPage() {
             <div className="font-display text-lg font-bold">{(club.data?.stadium_capacity ?? 0).toLocaleString("pt-BR")}</div>
             <div className="text-[11px] text-muted-foreground">lugares</div>
           </div>
+          {clubId && (
+            <div className="rounded-lg border bg-elevated/40 p-3">
+              <div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Flame className="size-3.5" /> Torcida
+              </div>
+              <div className="font-display text-lg font-bold">{FAN_TEMPERAMENT_LABEL[fanTemperamentFromClubId(clubId)]}</div>
+              <div className="text-[11px] text-muted-foreground">{FAN_TEMPERAMENT_HINT[fanTemperamentFromClubId(clubId)]}</div>
+            </div>
+          )}
         </div>
         <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
           <span>Caixa: <span className="font-medium text-foreground">{formatMoney(club.data?.budget ?? 0)}</span></span>
