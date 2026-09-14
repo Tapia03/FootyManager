@@ -4,8 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { objectiveLabel } from "@/game/board";
+import { firedSeasonByClub, isFiringSeason } from "@/game/career";
+import { formatDate } from "@/lib/game-hooks";
 import { PageHeader, MetricCard, MeterBar, Pill, EmptyState } from "@/components/fm";
-import { Award, Trophy } from "lucide-react";
+import { Award, Trophy, Mail } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -14,10 +16,20 @@ export const Route = createFileRoute("/_authenticated/saves/$saveId/career")({
 });
 
 // -----------------------------------------------------------------------------
-// Carreira do técnico — não introduz tabela nova pro histórico: season_objectives
-// já registra (clube, temporada, resultado) toda vez que um clube é "meu" numa
-// temporada (ver ensureSeasonObjective em src/lib/board.ts), incluindo trocas
-// de clube no meio do caminho — então já É, de fato, a trajetória da carreira.
+// Carreira do técnico (item 14 do backlog FootSim) — não introduz tabela nova
+// pro histórico: season_objectives já registra (clube, temporada, resultado)
+// toda vez que um clube é "meu" numa temporada (ver ensureSeasonObjective em
+// src/lib/board.ts), incluindo trocas de clube no meio do caminho — então já
+// É, de fato, a trajetória da carreira. job_offers (nunca apagado, guarda
+// accepted/declined/expired) vira o histórico de sondagens. Demissão é
+// inferida cruzando com saves.fired_from_club_ids (ver wasFiredAfter abaixo).
+//
+// Escopo deliberadamente FORA: aposentadoria do técnico. Isso é o item 22
+// do backlog ("Encerramento, recordes e legado da carreira") — construir
+// aqui seria antecipar um item maior sem o desenho que ele merece (tela de
+// hall da fama, decisão do que acontece com o save depois). Card explícito
+// do item 14 só pede reputação/histórico/sondagens/demissão, que é o que
+// esta tela cobre.
 // -----------------------------------------------------------------------------
 function CareerPage() {
   const { saveId } = useParams({ from: "/_authenticated/saves/$saveId/career" });
@@ -44,6 +56,22 @@ function CareerPage() {
     },
   });
 
+  // Sondagens de emprego já respondidas (item 14 do backlog FootSim) —
+  // job_offers já guarda tudo isso (status accepted/declined/expired,
+  // nunca apagado), só faltava mostrar em algum lugar.
+  const offers = useQuery({
+    queryKey: ["career-job-offers", saveId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("job_offers")
+        .select("id, status, offer_date, clubs!job_offers_offering_club_id_fkey(name, reputation)")
+        .eq("save_id", saveId).neq("status", "pending")
+        .order("offer_date", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+  });
+
   const saveName = useMutation({
     mutationFn: async (name: string) => {
       const { error } = await supabase.from("saves").update({ manager_name: name || "Técnico" }).eq("id", saveId);
@@ -54,6 +82,15 @@ function CareerPage() {
 
   const titles = (timeline.data ?? []).filter((h) => h.final_position === 1).length;
   const reputation = save.data?.manager_reputation ?? 50;
+
+  // Marca a temporada em que uma demissão aconteceu (item 14 do backlog
+  // FootSim: "demissão" na trajetória, não só "meta não batida") — lógica
+  // pura em src/game/career.ts.
+  const firedClubIds = new Set((save.data?.fired_from_club_ids as string[] | null) ?? []);
+  const firedMap = firedSeasonByClub(timeline.data ?? [], firedClubIds);
+  const wasFiredAfter = (h: { club_id: string | null; season: number }) => isFiringSeason(h, firedMap);
+
+  const OFFER_STATUS_LABEL: Record<string, string> = { accepted: "Aceita", declined: "Recusada", expired: "Expirou" };
 
   return (
     <div className="space-y-4">
@@ -108,10 +145,32 @@ function CareerPage() {
                   {h.final_position === 1 ? " 🏆" : ""}
                 </div>
               </div>
-              <Pill tone={h.status === "met" ? "ok" : "danger"}>{h.status === "met" ? "Batida" : "Não batida"}</Pill>
+              <Pill tone={wasFiredAfter(h) ? "danger" : h.status === "met" ? "ok" : "danger"}>
+                {wasFiredAfter(h) ? "Demitido" : h.status === "met" ? "Batida" : "Não batida"}
+              </Pill>
             </div>
           ))}
           {timeline.data?.length === 0 && <EmptyState icon={Award} title="Nenhuma temporada concluída ainda" />}
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="fm-eyebrow mb-3">Sondagens de emprego</div>
+        <div className="space-y-2">
+          {offers.data?.map((o) => (
+            <div key={o.id} className="flex items-center justify-between gap-2 border-t border-border/50 pt-2 text-sm first:border-t-0 first:pt-0">
+              <div>
+                <span className="font-medium">{o.clubs?.name ?? "?"}</span>
+                <span className="text-muted-foreground"> · reputação {o.clubs?.reputation ?? "?"} · {formatDate(o.offer_date)}</span>
+              </div>
+              <Pill tone={o.status === "accepted" ? "ok" : o.status === "declined" ? "neutral" : "warn"}>
+                {OFFER_STATUS_LABEL[o.status] ?? o.status}
+              </Pill>
+            </div>
+          ))}
+          {offers.data?.length === 0 && (
+            <EmptyState icon={Mail} title="Nenhuma sondagem recebida ainda" description="Clubes de reputação maior que a do seu, se você estiver indo bem, podem te sondar." />
+          )}
         </div>
       </Card>
     </div>
