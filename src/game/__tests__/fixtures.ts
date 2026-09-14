@@ -32,6 +32,7 @@ export function makePlayer(input: {
   attrs?: Partial<PlayerAttributes>;
   overall?: number;
   condition?: number;
+  club_since?: string | null;
 }): PlayerLike {
   counter++;
   const id = input.id ?? `p${counter}`;
@@ -47,6 +48,7 @@ export function makePlayer(input: {
     form: 70,
     morale: 70,
     condition: input.condition ?? 100,
+    club_since: input.club_since ?? null,
   };
 }
 

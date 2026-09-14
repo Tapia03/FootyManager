@@ -300,12 +300,44 @@ export interface TeamTacticalRating {
   // pela textura tática (src/game/texture.ts, vetor de diagrama) e pelo
   // visualizador (live-positions.ts, via MatchLineupEntry.roleKey).
   roleByPlayerId: Map<string, RoleDef>;
+  // Multiplicador de química de elenco já aplicado em attack/midfield/defense
+  // (ver squadChemistryMultiplier abaixo) — exposto pra UI mostrar o efeito,
+  // não precisa ser reaplicado por quem consome o rating.
+  chemistry: number;
+}
+
+// -----------------------------------------------------------------------------
+// Química de elenco — decisão do FootSim (ver comunidade.footsim.com.br,
+// "o entrosamento do elenco deve afetar o motor de partida") venceu de forma
+// clara e propositalmente MINIMALISTA: só o tempo que os jogadores já jogam
+// juntos, sem nacionalidade/idioma/personalidade (adiado por eles também).
+// Aqui: tempo médio de casa (club_since) do XI escalado, mapeado numa curva
+// suave. club_since ausente (elenco de seed importado, sem data real) conta
+// como "1 ano" (neutro) pra não penalizar times que sempre jogaram juntos só
+// por falta de dado — só times remontados via transferência/empréstimo/base
+// acumulam a curva de verdade a partir da própria janela de gameplay.
+// Efeito pequeno de propósito (±3-4%, nunca decide sozinho um jogo) — é
+// tempero, não um dial novo disfarçado.
+// -----------------------------------------------------------------------------
+const NEUTRAL_TENURE_YEARS = 1;
+
+function tenureYears(clubSince: string | null | undefined, todayISO: string): number {
+  if (!clubSince) return NEUTRAL_TENURE_YEARS;
+  const days = (new Date(todayISO + "T00:00:00Z").getTime() - new Date(clubSince + "T00:00:00Z").getTime()) / 86_400_000;
+  return Math.max(0, days) / 365;
+}
+
+export function squadChemistryMultiplier(xiPlayers: { club_since?: string | null }[], todayISO?: string): number {
+  if (!todayISO || xiPlayers.length === 0) return 1;
+  const avgYears = xiPlayers.reduce((s, p) => s + tenureYears(p.club_since, todayISO), 0) / xiPlayers.length;
+  return clamp(1 + (avgYears - NEUTRAL_TENURE_YEARS) * 0.02, 0.94, 1.03);
 }
 
 export function rateTacticalTeam(
   players: PlayerLike[],
   club: { formation?: FormationCode; mentality?: Mentality; pressing?: number; defensive_line?: number; tempo?: number; passing_style?: PassingStyle },
   savedLineup?: { player_id: string; slot: string; role: string | null; instructions?: unknown }[],
+  todayISO?: string,
 ): TeamTacticalRating {
   const formation = club.formation ?? "4-4-2";
   const slots = formationSlots(formation);
@@ -379,11 +411,12 @@ export function rateTacticalTeam(
       cDef++;
     }
   }
-  const attack = (atkAcc / Math.max(1, cAtk + cMid * 0.3)) * coefs.attack;
-  const midfield = midAcc / Math.max(1, cMid);
-  const defense = (defAcc / Math.max(1, cDef + cMid * 0.2)) * coefs.defense;
+  const chemistry = squadChemistryMultiplier(xi.entries.map((e) => e.player), todayISO);
+  const attack = (atkAcc / Math.max(1, cAtk + cMid * 0.3)) * coefs.attack * chemistry;
+  const midfield = (midAcc / Math.max(1, cMid)) * chemistry;
+  const defense = (defAcc / Math.max(1, cDef + cMid * 0.2)) * coefs.defense * chemistry;
   const overall = (attack + midfield + defense) / 3;
-  return { attack, midfield, defense, overall, xi, coefs, instructionsByPlayerId, roleByPlayerId };
+  return { attack, midfield, defense, overall, xi, coefs, instructionsByPlayerId, roleByPlayerId, chemistry };
 }
 
 // attack/midfield/defense de rateTacticalTeam são "potência" bruta (alimentam

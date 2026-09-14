@@ -444,6 +444,7 @@ function TacticsPage() {
     allPlayers,
     { formation, mentality, pressing, defensive_line: defLine, tempo, passing_style: passing },
     savedLineupForRating,
+    todayISO,
   );
   const ratingPct = (v: number) => Math.max(4, ratingToDisplay(v));
 
@@ -636,7 +637,14 @@ function TacticsPage() {
         </Card>
 
         <Card className="p-3">
-          <div className="fm-eyebrow mb-2">Força do time com esta escalação/tática</div>
+          <div className="fm-eyebrow mb-2 flex items-center justify-between">
+            <span>Força do time com esta escalação/tática</span>
+            {Math.abs(teamRating.chemistry - 1) >= 0.005 && (
+              <Pill tone={teamRating.chemistry > 1 ? "ok" : "warn"} title="Química de elenco: quanto mais tempo os titulares já jogam juntos neste clube, maior o ganho (e vice-versa).">
+                Química {teamRating.chemistry > 1 ? "+" : ""}{Math.round((teamRating.chemistry - 1) * 100)}%
+              </Pill>
+            )}
+          </div>
           <div className="grid grid-cols-3 gap-4">
             <MeterBar label={<span className="flex w-full justify-between"><span>Ataque</span><span className="font-semibold text-foreground">{ratingToDisplay(teamRating.attack)}</span></span>} value={ratingPct(teamRating.attack)} tone="danger" />
             <MeterBar label={<span className="flex w-full justify-between"><span>Meio</span><span className="font-semibold text-foreground">{ratingToDisplay(teamRating.midfield)}</span></span>} value={ratingPct(teamRating.midfield)} tone="info" />

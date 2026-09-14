@@ -40,6 +40,7 @@ export async function generateYouthIntake(
       overall: y.overall, potential: y.potential, market_value: y.marketValue, wage: y.wage,
       contract_until: addYears(today, 2 + Math.floor(Math.random() * 2)),
       morale: 70, condition: 100, form: 65,
+      club_since: today,
     };
   });
   const { error } = await supabase.from("players").insert(rows);

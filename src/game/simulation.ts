@@ -177,8 +177,8 @@ export function simulateMatchSegment(
   const availableAway = opts.todayISO ? awayPlayers.filter((p) => checkAvailability(p, opts.todayISO!).available) : awayPlayers;
 
   // Motor tático (Fase 2) — recalculado a cada trecho, então reflete trocas/tática atuais.
-  const h: TeamTacticalRating = rateTacticalTeam(availableHome, home, opts.homeLineup);
-  const a: TeamTacticalRating = rateTacticalTeam(availableAway, away, opts.awayLineup);
+  const h: TeamTacticalRating = rateTacticalTeam(availableHome, home, opts.homeLineup, opts.todayISO);
+  const a: TeamTacticalRating = rateTacticalTeam(availableAway, away, opts.awayLineup, opts.todayISO);
 
   // Vantagens laterais — poder de ataque de um lado vs poder de defesa do outro.
   const homeAttackPower = h.attack + h.midfield * 0.35;

@@ -94,11 +94,12 @@ function AnalysisPage() {
       )
     : { strengths: [], weaknesses: [] };
 
+  const todayISO = save.data?.game_date as string | undefined;
   const myRating = club.data && myFull.data && myFull.data.length > 0
-    ? rateTacticalTeam(myFull.data as any, club.data as any, myLineup.data as any)
+    ? rateTacticalTeam(myFull.data as any, club.data as any, myLineup.data as any, todayISO)
     : null;
   const oppRating = opp.data?.club && opp.data.roster.length > 0
-    ? rateTacticalTeam(opp.data.roster as any, opp.data.club as any)
+    ? rateTacticalTeam(opp.data.roster as any, opp.data.club as any, undefined, todayISO)
     : null;
 
   const kit = opp.data?.club ? clubColors(opp.data.club as any) : { primary: "#334155", secondary: "#334155" };

@@ -26,7 +26,11 @@ export async function processLoanReturns(saveId: string, today: string): Promise
 
   for (const p of due) {
     const { error } = await supabase.from("players")
-      .update({ club_id: p.loaned_from_club_id, loaned_from_club_id: null, loan_return_date: null, loan_buy_option: null })
+      // club_since: voltar de empréstimo também reinicia a química (o jogador
+      // esteve fora do vestiário original por meses) — ver transfer-offers.ts.
+      // `as any`: coluna nova, ainda não existe no types.ts gerado (mesmo
+      // padrão de sempre pra colunas novas, ver CLAUDE.md).
+      .update({ club_id: p.loaned_from_club_id, loaned_from_club_id: null, loan_return_date: null, loan_buy_option: null, club_since: today } as any)
       .eq("id", p.id);
     if (error) throw error;
   }

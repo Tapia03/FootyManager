@@ -39,7 +39,10 @@ export async function executeTransfer(opts: {
   dealType?: DealType; loanBuyOption?: number | null;
 }) {
   const { saveId, myClubId, player, seller, buyer, fee, today, dealType = "permanent", loanBuyOption = null } = opts;
-  const playerPatch: any = { club_id: buyer.id };
+  // Química de elenco (ver squadChemistryMultiplier em tactics.ts): trocar de
+  // clube — mesmo em empréstimo, é outro vestiário — zera o relógio de
+  // "tempo jogando junto" a partir de hoje.
+  const playerPatch: any = { club_id: buyer.id, club_since: today };
   // Número da camisa livre no clube que recebe o jogador (ver src/game/squad-numbers.ts).
   try {
     const [{ data: existing }, { data: row }] = await Promise.all([

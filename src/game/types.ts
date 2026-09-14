@@ -57,6 +57,11 @@ export interface PlayerLike {
   injury_risk_until?: string | null;
   suspended_matches?: number | null;
   yellow_cards_season?: number | null;
+  // Data em que o jogador chegou no clube ATUAL (YYYY-MM-DD). NULL = elenco
+  // importado via seed, sem data real conhecida — tratado como neutro pela
+  // química de elenco (nunca penaliza um time que "sempre" jogou junto só
+  // por falta de dado). Ver squadChemistryMultiplier em tactics.ts.
+  club_since?: string | null;
   overall: number;
   // Atributos completos no padrão Football Manager (47 campos, escala 1-20
   // — ver src/game/attributes.ts). Substituiu os 12 campos soltos que

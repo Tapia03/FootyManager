@@ -168,7 +168,9 @@ function Overview() {
       ]);
       const sorted = [...(roster ?? [])].sort((a, b) => b.overall - a.overall);
       const avgOverall = sorted.length ? Math.round(sorted.reduce((a, b) => a + b.overall, 0) / sorted.length) : 0;
-      const rating = oClub && roster && roster.length > 0 ? rateTacticalTeam(roster as any, oClub as any) : null;
+      const rating = oClub && roster && roster.length > 0
+        ? rateTacticalTeam(roster as any, oClub as any, undefined, save.data?.game_date as string | undefined)
+        : null;
       return { club: oClub, topPlayers: sorted.slice(0, 5), avgOverall, rating };
     },
   });
@@ -184,7 +186,7 @@ function Overview() {
     queryFn: async () => (await supabase.from("tactic_lineups").select("*").eq("club_id", clubId!)).data ?? [],
   });
   const myRating = club.data && myPlayersFull.data && myPlayersFull.data.length > 0
-    ? rateTacticalTeam(myPlayersFull.data as any, club.data as any, myLineup.data as any)
+    ? rateTacticalTeam(myPlayersFull.data as any, club.data as any, myLineup.data as any, save.data?.game_date as string | undefined)
     : null;
 
   // --- derivados de tabela / meta -------------------------------------------
