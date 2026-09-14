@@ -32,6 +32,69 @@ export function nextSquadNumber(existing: (number | null | undefined)[], positio
   return lowestFree(used);
 }
 
+function prefRank(pos: Pos, n: number | null | undefined): number {
+  if (n == null) return Infinity;
+  const idx = PREF[basePos(pos)].indexOf(n);
+  return idx === -1 ? Infinity : idx;
+}
+
+export interface NumberUpgradeSuggestion {
+  playerId: string;
+  currentNumber: number;
+  suggestedNumber: number;
+}
+
+/**
+ * Item 11 do backlog FootSim: "numeração dinâmica" — quando alguém sai do
+ * elenco, o número dela fica livre e pode encaixar melhor em outro jogador
+ * (ex. o 9 de um atacante que saiu combina mais com outro atacante que hoje
+ * usa o 27). Não dispara em cima de um evento específico de saída — só olha
+ * o elenco ATUAL e detecta o descompasso, o que cobre qualquer forma de
+ * saída (transferência, liberação, aposentadoria) sem precisar plugar em
+ * cada uma. Nunca aplica sozinho (mesmo padrão "sugerir, não aplicar" já
+ * usado pros cobradores de bola parada) — só devolve candidatos, no máximo
+ * 1 sugestão por jogador e por número (sem dois jogadores competindo pelo
+ * mesmo número livre). Deliberadamente só 1 nível: um número que ficaria
+ * livre POR CAUSA de uma sugestão desta rodada não entra na conta — evita
+ * cadeia de trocas difícil de explicar pro usuário.
+ */
+export function suggestNumberUpgrades(
+  players: { id: string; position: Pos; squad_number?: number | null; overall?: number | null }[],
+): NumberUpgradeSuggestion[] {
+  const used = new Set<number>(players.map((p) => p.squad_number).filter((n): n is number => n != null));
+
+  type Candidate = { playerId: string; currentNumber: number; targetNumber: number; improvement: number; overall: number };
+  const candidates: Candidate[] = [];
+  for (const p of players) {
+    if (p.squad_number == null) continue;
+    const curRank = prefRank(p.position, p.squad_number);
+    let bestTarget: number | null = null;
+    let bestRank = curRank;
+    for (let r = 0; r < PREF[basePos(p.position)].length; r++) {
+      const n = PREF[basePos(p.position)][r];
+      if (used.has(n)) continue;
+      if (r < bestRank) { bestRank = r; bestTarget = n; }
+    }
+    if (bestTarget != null) {
+      candidates.push({
+        playerId: p.id, currentNumber: p.squad_number, targetNumber: bestTarget,
+        improvement: curRank - bestRank, overall: p.overall ?? 0,
+      });
+    }
+  }
+
+  // Maior ganho primeiro; empate por overall (quem "merece" mais o número bom).
+  candidates.sort((a, b) => b.improvement - a.improvement || b.overall - a.overall);
+  const claimed = new Set<number>();
+  const out: NumberUpgradeSuggestion[] = [];
+  for (const c of candidates) {
+    if (claimed.has(c.targetNumber)) continue;
+    claimed.add(c.targetNumber);
+    out.push({ playerId: c.playerId, currentNumber: c.currentNumber, suggestedNumber: c.targetNumber });
+  }
+  return out;
+}
+
 /**
  * Numera um elenco inteiro do zero. Ordena por setor (GK→DEF→MID→FWD) e overall,
  * e vai puxando da pilha de preferência de cada setor.

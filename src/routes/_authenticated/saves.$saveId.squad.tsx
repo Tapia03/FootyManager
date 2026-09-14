@@ -12,9 +12,10 @@ import { contractsAtRisk, CONTRACT_RISK_LABEL, type ContractRisk } from "@/game/
 import { proposeLoanOut, recallLoan, exerciseLoanBuyOption } from "@/lib/loans";
 import { loanOutProgress } from "@/game/loan-status";
 import { marketTrendFromForm } from "@/game/valuation";
+import { suggestNumberUpgrades, type NumberUpgradeSuggestion } from "@/game/squad-numbers";
 import { PageHeader, SubTabs, Pill, RatingBadge, EmptyState, type Tone } from "@/components/fm";
 import { DressingRoomView } from "@/components/dressing-room-view";
-import { Users, Search, RefreshCw, ArrowDownUp } from "lucide-react";
+import { Users, Search, RefreshCw, ArrowDownUp, Shirt } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/saves/$saveId/squad")({
@@ -115,6 +116,19 @@ function Squad() {
   const loanedIn = useMemo(() => all.filter((p) => p.loaned_from_club_id), [all]);
   const loanTotal = loanedIn.length + (loanedOut.data?.length ?? 0);
 
+  // Numeração dinâmica (item 11 do backlog FootSim) — recalculado do elenco
+  // atual sempre que ele muda, cobre qualquer forma de saída (transferência,
+  // liberação, aposentadoria) sem precisar de gatilho específico.
+  const numberSuggestions = useMemo(() => suggestNumberUpgrades(all), [all]);
+  const applyNumber = useMutation({
+    mutationFn: async (s: NumberUpgradeSuggestion) => {
+      const { error } = await supabase.from("players").update({ squad_number: s.suggestedNumber }).eq("id", s.playerId);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries(),
+    onError: (e: any) => toast.error(e.message ?? "Falha ao trocar número"),
+  });
+
   const filtered = useMemo(() => {
     let list = [...all];
     if (posFilter !== "ALL") list = list.filter((p) => p.position === posFilter);
@@ -187,6 +201,30 @@ function Squad() {
         />
       ) : (
       <>
+      {numberSuggestions.length > 0 && (
+        <Card className="border-info/30 bg-info/5 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Shirt className="size-4 text-info" />
+            <span className="text-sm font-semibold">Números melhores disponíveis</span>
+          </div>
+          <div className="space-y-1.5">
+            {numberSuggestions.map((s) => {
+              const p = all.find((x) => x.id === s.playerId);
+              return (
+                <div key={s.playerId} className="flex items-center justify-between gap-2 text-sm">
+                  <span>
+                    <span className="font-medium">{p?.name ?? "?"}</span>{" "}
+                    <span className="text-muted-foreground">#{s.currentNumber} → #{s.suggestedNumber}</span>
+                  </span>
+                  <Button size="sm" variant="outline" onClick={() => applyNumber.mutate(s)} disabled={applyNumber.isPending}>
+                    Trocar
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
       <SubTabs
         value={posFilter}
         onValueChange={setPosFilter}
