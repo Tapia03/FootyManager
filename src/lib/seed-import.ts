@@ -28,6 +28,10 @@ export interface SeedPlayer {
   overall: number; potential?: number | null; market_value: number; wage: number;
   contract_until: string | null; morale: number; condition: number; form: number;
   injured_until: string | null;
+  // Campos reais do FM (opcionais — ausentes em seeds antigos/procedurais).
+  nationality?: string | null; birth_date?: string | null;
+  international_caps?: number | null; international_goals?: number | null;
+  club_since?: string | null; release_clause?: number | null;
 }
 
 export interface SeedClub {
@@ -45,6 +49,8 @@ export interface SeedClub {
   strength?: number | null;
   division: number;
   morale: number;
+  wage_budget?: number | null;
+  avg_attendance?: number | null;
   players: SeedPlayer[];
 }
 
@@ -125,7 +131,10 @@ export async function importSeed(
 
   // Insere clubes
   onProgress?.({ step: "Criando clubes", current: 0, total: seed.clubs.length });
-  const clubsPayload = seed.clubs.map((c) => {
+  // any[]: wage_budget/avg_attendance existem na tabela mas ainda não estão
+  // em types.ts (convenção do projeto — regenerar esse arquivo é manual,
+  // ver CLAUDE.md). Mesmo padrão já usado em playersPayload logo abaixo.
+  const clubsPayload: any[] = seed.clubs.map((c) => {
     const totalBudget = c.budget ?? 0;
     // Mesma proporção usada na migration que separou o caixa em dois fundos
     // (ver 20260810180000_transfer_budget.sql) — 40% nasce como verba de
@@ -149,6 +158,8 @@ export async function importSeed(
       youth_facilities: c.youth_facilities ?? 3,
       strength: c.strength ?? squadStrength(c.players ?? []),
       division: c.division ?? 1,
+      wage_budget: c.wage_budget ?? null,
+      avg_attendance: c.avg_attendance ?? null,
     };
   });
 
@@ -223,6 +234,12 @@ export async function importSeed(
         condition: p.condition,
         form: p.form,
         injured_until: p.injured_until,
+        nationality: p.nationality ?? null,
+        birth_date: p.birth_date ?? null,
+        international_caps: p.international_caps ?? 0,
+        international_goals: p.international_goals ?? 0,
+        club_since: p.club_since ?? null,
+        release_clause: p.release_clause ?? null,
       });
     });
   });

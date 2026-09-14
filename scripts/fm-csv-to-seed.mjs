@@ -128,6 +128,11 @@ const fmDateToISO = (s) => {
   const m = String(s ?? "").match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
   return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
 };
+// "Nível de Contentamento" do Genie Scout vai de -100 (péssimo) a 100
+// (ótimo) — reescala pra 0-100 (nossa escala de moral). Confirmado
+// amostrando ~86 mil jogadores com clube nesta base: min -100, max 100,
+// mediana 28.
+const moraleFromContentment = (s) => Math.max(0, Math.min(100, Math.round((num(s) + 100) / 2)));
 const normalizeName = (raw) => {
   const s = String(raw ?? "").trim();
   const c = s.indexOf(", ");
@@ -249,11 +254,16 @@ for (const r of C.rows) {
   const transferBudget = num(r[cId("Orçamento Transferências Época")]);
   const colors = CLUB_COLORS[name] ?? null;
   const repScaled = Math.round(rep / 100); // 0-100
-  // "Condições Treino" do FM é 1-20 → nossa escala de instalações é 1-5.
-  const trainingRating = num(r[cId("Condições Treino")]);
-  const training_facilities = trainingRating > 0 ? Math.max(1, Math.min(5, Math.round(trainingRating / 4))) : 3;
-  // A CSV não traz nível de base — deriva da reputação do clube.
-  const youth_facilities = repScaled >= 80 ? 5 : repScaled >= 62 ? 4 : repScaled >= 42 ? 3 : 2;
+  // "Condições Treino"/"Condições Camadas Jovens" do FM vão de 1-20 →
+  // nossa escala de instalações é 1-5 (mesma conversão pros dois campos,
+  // eram exportados lado a lado na CLUBES.csv). Antes a gente derivava
+  // youth_facilities da reputação por achar que a CSV não trazia isso —
+  // trazia, só não estava sendo lida.
+  const scaleFacility = (raw) => (raw > 0 ? Math.max(1, Math.min(5, Math.round(raw / 4))) : 3);
+  const training_facilities = scaleFacility(num(r[cId("Condições Treino")]));
+  const youth_facilities = scaleFacility(num(r[cId("Condições Camadas Jovens")]));
+  const wageBudget = num(r[cId("Orçamento Salários")]);
+  const avgAttendance = num(r[cId("Assistência Média")]);
   clubs.set(id, {
     competition: `D${divId}`,
     _divId: divId,
@@ -263,6 +273,11 @@ for (const r of C.rows) {
     primary_color: colors?.[0] ?? null,
     secondary_color: colors?.[1] ?? null,
     budget: Math.max(0, Math.round(balance > 0 ? balance : transferBudget * 2 || rep * 500)),
+    // Informativos por enquanto — não substituem o cálculo de orçamento
+    // acima (que já é ajustado por causa de dados inconsistentes na base),
+    // só ficam guardados pra exibição/imersão real.
+    wage_budget: wageBudget > 0 ? Math.round(wageBudget) : null,
+    avg_attendance: avgAttendance > 0 ? Math.round(avgAttendance) : null,
     reputation: repScaled,
     stadium_capacity: num(r[cId("Capacidade Estádio")]) || 15000,
     training_facilities,
@@ -303,6 +318,9 @@ for (const r of P.rows) {
   const overall = Math.max(20, Math.min(95, Math.round(pct(r[pId("Melhor Classificação")]))));
   const potential = Math.max(overall, Math.min(97, Math.round(pct(r[pId("Melhor Classificação Potencial")]))));
   const age = num(r[pId("Idade")]) || 24;
+  const releaseClause = num(r[pId("Cláusula Mínima")]);
+  const caps = num(r[pId("Internacionalizações")]);
+  const capGoals = num(r[pId("Gols Internacionais")]);
 
   club.players.push({
     name, age, position: base,
@@ -313,7 +331,24 @@ for (const r of P.rows) {
     market_value: derivedValue(overall, age),
     wage: derivedWage(overall),
     contract_until: fmDateToISO(r[pId("Fim Contrato")]),
-    morale: 70, condition: 100, form: 65, injured_until: null,
+    // Real, direto da CSV — antes vinham fixos (70/100/65) porque a gente
+    // achava que a base não trazia isso. "Condição"/"Forma" já são % (0-100,
+    // mesma escala nossa); "Nível de Contentamento" é -100..100 (rescala
+    // pra moral 0-100 — ver moraleFromContentment acima).
+    morale: moraleFromContentment(r[pId("Nível de Contentamento")]),
+    condition: Math.max(0, Math.min(100, Math.round(pct(r[pId("Condição")])))) || 100,
+    form: Math.max(0, Math.min(100, Math.round(pct(r[pId("Forma")])))),
+    injured_until: null,
+    // Novos campos reais (ver migration 20260914170000_fm_import_real_fields).
+    nationality: (r[pId("País")] ?? "").trim() || null,
+    birth_date: fmDateToISO(r[pId("Data De Nascimento")]),
+    international_caps: caps > 0 ? Math.round(caps) : 0,
+    international_goals: capGoals > 0 ? Math.round(capGoals) : 0,
+    // "Ingressou No Clube" — química de elenco por tempo junto
+    // (squadChemistryMultiplier). Antes ficava sempre null pra qualquer
+    // elenco importado por não termos a data real; agora temos.
+    club_since: fmDateToISO(r[pId("Ingressou No Clube")]),
+    release_clause: releaseClause > 0 ? Math.round(releaseClause) : null,
   });
   attached++;
 }
