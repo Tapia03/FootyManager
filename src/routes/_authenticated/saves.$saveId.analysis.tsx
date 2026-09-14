@@ -143,7 +143,12 @@ function AnalysisPage() {
               <Card className="p-4">
                 <div className="mb-3 flex items-center gap-2">
                   <Compass className="size-4 text-info" />
-                  <span className="fm-eyebrow">DNA tático — {opp.data.club.name}</span>
+                  <span className="fm-eyebrow">
+                    DNA tático —{" "}
+                    <Link to="/saves/$saveId/clubs/$clubId" params={{ saveId, clubId: oppId! }} className="hover:text-primary hover:underline">
+                      {opp.data.club.name}
+                    </Link>
+                  </span>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <Pill tone="info">{dossier.dna.formacao}</Pill>

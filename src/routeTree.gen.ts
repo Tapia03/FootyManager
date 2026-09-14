@@ -31,6 +31,8 @@ import { Route as AuthenticatedSavesSaveIdBoardRouteImport } from './routes/_aut
 import { Route as AuthenticatedSavesSaveIdAnalysisRouteImport } from './routes/_authenticated/saves.$saveId.analysis'
 import { Route as AuthenticatedSavesSaveIdAcademyRouteImport } from './routes/_authenticated/saves.$saveId.academy'
 import { Route as AuthenticatedSavesSaveIdPlayersPlayerIdRouteImport } from './routes/_authenticated/saves.$saveId.players.$playerId'
+import { Route as AuthenticatedSavesSaveIdCompetitionsCompetitionIdRouteImport } from './routes/_authenticated/saves.$saveId.competitions.$competitionId'
+import { Route as AuthenticatedSavesSaveIdClubsClubIdRouteImport } from './routes/_authenticated/saves.$saveId.clubs.$clubId'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
@@ -160,6 +162,18 @@ const AuthenticatedSavesSaveIdPlayersPlayerIdRoute =
     path: '/players/$playerId',
     getParentRoute: () => AuthenticatedSavesSaveIdRoute,
   } as any)
+const AuthenticatedSavesSaveIdCompetitionsCompetitionIdRoute =
+  AuthenticatedSavesSaveIdCompetitionsCompetitionIdRouteImport.update({
+    id: '/competitions/$competitionId',
+    path: '/competitions/$competitionId',
+    getParentRoute: () => AuthenticatedSavesSaveIdRoute,
+  } as any)
+const AuthenticatedSavesSaveIdClubsClubIdRoute =
+  AuthenticatedSavesSaveIdClubsClubIdRouteImport.update({
+    id: '/clubs/$clubId',
+    path: '/clubs/$clubId',
+    getParentRoute: () => AuthenticatedSavesSaveIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -182,6 +196,8 @@ export interface FileRoutesByFullPath {
   '/saves/$saveId/table': typeof AuthenticatedSavesSaveIdTableRoute
   '/saves/$saveId/tactics': typeof AuthenticatedSavesSaveIdTacticsRoute
   '/saves/$saveId/': typeof AuthenticatedSavesSaveIdIndexRoute
+  '/saves/$saveId/clubs/$clubId': typeof AuthenticatedSavesSaveIdClubsClubIdRoute
+  '/saves/$saveId/competitions/$competitionId': typeof AuthenticatedSavesSaveIdCompetitionsCompetitionIdRoute
   '/saves/$saveId/players/$playerId': typeof AuthenticatedSavesSaveIdPlayersPlayerIdRoute
 }
 export interface FileRoutesByTo {
@@ -204,6 +220,8 @@ export interface FileRoutesByTo {
   '/saves/$saveId/table': typeof AuthenticatedSavesSaveIdTableRoute
   '/saves/$saveId/tactics': typeof AuthenticatedSavesSaveIdTacticsRoute
   '/saves/$saveId': typeof AuthenticatedSavesSaveIdIndexRoute
+  '/saves/$saveId/clubs/$clubId': typeof AuthenticatedSavesSaveIdClubsClubIdRoute
+  '/saves/$saveId/competitions/$competitionId': typeof AuthenticatedSavesSaveIdCompetitionsCompetitionIdRoute
   '/saves/$saveId/players/$playerId': typeof AuthenticatedSavesSaveIdPlayersPlayerIdRoute
 }
 export interface FileRoutesById {
@@ -229,6 +247,8 @@ export interface FileRoutesById {
   '/_authenticated/saves/$saveId/table': typeof AuthenticatedSavesSaveIdTableRoute
   '/_authenticated/saves/$saveId/tactics': typeof AuthenticatedSavesSaveIdTacticsRoute
   '/_authenticated/saves/$saveId/': typeof AuthenticatedSavesSaveIdIndexRoute
+  '/_authenticated/saves/$saveId/clubs/$clubId': typeof AuthenticatedSavesSaveIdClubsClubIdRoute
+  '/_authenticated/saves/$saveId/competitions/$competitionId': typeof AuthenticatedSavesSaveIdCompetitionsCompetitionIdRoute
   '/_authenticated/saves/$saveId/players/$playerId': typeof AuthenticatedSavesSaveIdPlayersPlayerIdRoute
 }
 export interface FileRouteTypes {
@@ -254,6 +274,8 @@ export interface FileRouteTypes {
     | '/saves/$saveId/table'
     | '/saves/$saveId/tactics'
     | '/saves/$saveId/'
+    | '/saves/$saveId/clubs/$clubId'
+    | '/saves/$saveId/competitions/$competitionId'
     | '/saves/$saveId/players/$playerId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -276,6 +298,8 @@ export interface FileRouteTypes {
     | '/saves/$saveId/table'
     | '/saves/$saveId/tactics'
     | '/saves/$saveId'
+    | '/saves/$saveId/clubs/$clubId'
+    | '/saves/$saveId/competitions/$competitionId'
     | '/saves/$saveId/players/$playerId'
   id:
     | '__root__'
@@ -300,6 +324,8 @@ export interface FileRouteTypes {
     | '/_authenticated/saves/$saveId/table'
     | '/_authenticated/saves/$saveId/tactics'
     | '/_authenticated/saves/$saveId/'
+    | '/_authenticated/saves/$saveId/clubs/$clubId'
+    | '/_authenticated/saves/$saveId/competitions/$competitionId'
     | '/_authenticated/saves/$saveId/players/$playerId'
   fileRoutesById: FileRoutesById
 }
@@ -464,6 +490,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSavesSaveIdPlayersPlayerIdRouteImport
       parentRoute: typeof AuthenticatedSavesSaveIdRoute
     }
+    '/_authenticated/saves/$saveId/competitions/$competitionId': {
+      id: '/_authenticated/saves/$saveId/competitions/$competitionId'
+      path: '/competitions/$competitionId'
+      fullPath: '/saves/$saveId/competitions/$competitionId'
+      preLoaderRoute: typeof AuthenticatedSavesSaveIdCompetitionsCompetitionIdRouteImport
+      parentRoute: typeof AuthenticatedSavesSaveIdRoute
+    }
+    '/_authenticated/saves/$saveId/clubs/$clubId': {
+      id: '/_authenticated/saves/$saveId/clubs/$clubId'
+      path: '/clubs/$clubId'
+      fullPath: '/saves/$saveId/clubs/$clubId'
+      preLoaderRoute: typeof AuthenticatedSavesSaveIdClubsClubIdRouteImport
+      parentRoute: typeof AuthenticatedSavesSaveIdRoute
+    }
   }
 }
 
@@ -485,6 +525,8 @@ interface AuthenticatedSavesSaveIdRouteChildren {
   AuthenticatedSavesSaveIdTableRoute: typeof AuthenticatedSavesSaveIdTableRoute
   AuthenticatedSavesSaveIdTacticsRoute: typeof AuthenticatedSavesSaveIdTacticsRoute
   AuthenticatedSavesSaveIdIndexRoute: typeof AuthenticatedSavesSaveIdIndexRoute
+  AuthenticatedSavesSaveIdClubsClubIdRoute: typeof AuthenticatedSavesSaveIdClubsClubIdRoute
+  AuthenticatedSavesSaveIdCompetitionsCompetitionIdRoute: typeof AuthenticatedSavesSaveIdCompetitionsCompetitionIdRoute
   AuthenticatedSavesSaveIdPlayersPlayerIdRoute: typeof AuthenticatedSavesSaveIdPlayersPlayerIdRoute
 }
 
@@ -511,6 +553,10 @@ const AuthenticatedSavesSaveIdRouteChildren: AuthenticatedSavesSaveIdRouteChildr
     AuthenticatedSavesSaveIdTableRoute: AuthenticatedSavesSaveIdTableRoute,
     AuthenticatedSavesSaveIdTacticsRoute: AuthenticatedSavesSaveIdTacticsRoute,
     AuthenticatedSavesSaveIdIndexRoute: AuthenticatedSavesSaveIdIndexRoute,
+    AuthenticatedSavesSaveIdClubsClubIdRoute:
+      AuthenticatedSavesSaveIdClubsClubIdRoute,
+    AuthenticatedSavesSaveIdCompetitionsCompetitionIdRoute:
+      AuthenticatedSavesSaveIdCompetitionsCompetitionIdRoute,
     AuthenticatedSavesSaveIdPlayersPlayerIdRoute:
       AuthenticatedSavesSaveIdPlayersPlayerIdRoute,
   }

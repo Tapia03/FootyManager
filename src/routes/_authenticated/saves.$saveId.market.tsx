@@ -490,7 +490,13 @@ function Market() {
                   <td className="px-3 py-2 text-center">{p.position}</td>
                   <td className="px-3 py-2 text-center">{p.age}</td>
                   <td className="px-3 py-2 text-center font-semibold">{ovrLo === ovrHi ? ovrLo : `${ovrLo}-${ovrHi}`}</td>
-                  <td className="px-3 py-2">{p.clubs?.name}</td>
+                  <td className="px-3 py-2">
+                    {p.club_id ? (
+                      <Link to="/saves/$saveId/clubs/$clubId" params={{ saveId, clubId: p.club_id }} className="hover:text-primary hover:underline">
+                        {p.clubs?.name}
+                      </Link>
+                    ) : p.clubs?.name}
+                  </td>
                   <td className="px-3 py-2 text-right">{tier.showValue ? formatMoney(p.market_value) : "?"}</td>
                   <td className="px-3 py-2 text-center">
                     <select

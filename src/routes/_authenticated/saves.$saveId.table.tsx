@@ -1,4 +1,4 @@
-import { createFileRoute, useParams } from "@tanstack/react-router";
+import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -133,7 +133,11 @@ function Standings() {
               return (
               <tr key={r.club_id} className={`border-b border-border/50 ${r.club_id === clubId ? "bg-primary/10 font-semibold" : "hover:bg-elevated/50"}`}>
                 <td className={`px-3 py-1.5 text-muted-foreground border-l-2 ${zone === "promo" ? "border-ok" : zone === "rele" ? "border-danger" : "border-transparent"}`}>{pos}</td>
-                <td className="px-3 py-1.5 text-left">{r.name}</td>
+                <td className="px-3 py-1.5 text-left">
+                  <Link to="/saves/$saveId/clubs/$clubId" params={{ saveId, clubId: r.club_id }} className="hover:text-primary hover:underline">
+                    {r.name}
+                  </Link>
+                </td>
                 <td className="px-2 py-1.5 text-center font-semibold">{r.points}</td>
                 <td className="px-2 py-1.5 text-center text-muted-foreground">{r.played}</td>
                 <td className="px-2 py-1.5 text-center">{r.wins}</td>

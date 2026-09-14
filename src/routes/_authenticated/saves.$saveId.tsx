@@ -504,9 +504,16 @@ function SaveLayout() {
                 {initials}
               </div>
               <div>
-                <div className="font-semibold leading-tight">{club.data?.name}</div>
+                <Link to="/saves/$saveId/clubs/$clubId" params={{ saveId, clubId: save.data.my_club_id! }} className="font-semibold leading-tight hover:text-primary hover:underline">
+                  {club.data?.name}
+                </Link>
                 <div className="fm-eyebrow">
-                  {club.data?.competitions?.name} · Caixa {formatMoney(club.data?.budget)} · Transferências {formatMoney(club.data?.transfer_budget)}
+                  {club.data?.competition_id ? (
+                    <Link to="/saves/$saveId/competitions/$competitionId" params={{ saveId, competitionId: club.data.competition_id }} className="hover:text-primary hover:underline">
+                      {club.data?.competitions?.name}
+                    </Link>
+                  ) : club.data?.competitions?.name}
+                  {" "}· Caixa {formatMoney(club.data?.budget)} · Transferências {formatMoney(club.data?.transfer_budget)}
                 </div>
               </div>
             </div>
