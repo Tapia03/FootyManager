@@ -17,6 +17,7 @@ import { processLoanReturns } from "./loans";
 import { isRivalry, matchMoraleDelta } from "@/game/rivalries";
 import { checkReleaseClauses } from "./release-clauses";
 import { pushInbox, type InboxDraft } from "./inbox";
+import { evaluateMatchGoal, MATCH_GOAL_FORM_DELTA, matchGoalLabel, type PlayerMatchGoal } from "@/game/match-goals";
 
 const formatBRL = (n: number) =>
   Math.abs(n) >= 1_000_000 ? `R$ ${(n / 1_000_000).toFixed(1)}M`
@@ -103,7 +104,7 @@ export async function advanceDays(
   if (clubIds.length > 0) {
     const { data: clubs } = await supabase
       .from("clubs")
-      .select("id, name, short_name, morale, reputation, formation, mentality, pressing, defensive_line, tempo, passing_style, stadium_capacity, training_focus, weekly_training, strength, competition_id, penalty_taker_id, free_kick_taker_id, corner_taker_id, captain_id")
+      .select("id, name, short_name, morale, reputation, formation, mentality, pressing, defensive_line, tempo, passing_style, stadium_capacity, training_focus, weekly_training, strength, competition_id, penalty_taker_id, free_kick_taker_id, corner_taker_id, captain_id, player_match_goals")
       .in("id", clubIds) as any;
     for (const c of clubs ?? []) clubMap.set(c.id, c);
 
@@ -424,6 +425,29 @@ export async function advanceDays(
       moraleDelta += matchMoraleDelta(gd, isDerby);
       const opponentClubId = userIsHome ? m.away_club_id : m.home_club_id;
       aiMoraleDelta.set(opponentClubId, (aiMoraleDelta.get(opponentClubId) ?? 0) + matchMoraleDelta(-gd, isDerby));
+
+      // Metas individuais por partida (item 06 do backlog FootSim) — mesmo
+      // padrão "só a próxima partida" do pending_override: avalia contra o
+      // resultado REAL desta partida, aplica bônus/penalidade na FORMA do
+      // jogador (reaproveita formDelta, já vai ser gravado embaixo — sem
+      // escrita nova), avisa no inbox, e some sozinho (nunca fica pendurado
+      // pra próxima partida por engano).
+      const myGoals = (clubMap.get(myClubId!)?.player_match_goals as PlayerMatchGoal[] | undefined) ?? [];
+      if (myGoals.length > 0) {
+        const outcomes = myGoals.map((g) =>
+          evaluateMatchGoal(g, { isHome: userIsHome, homeScore: result.homeScore, awayScore: result.awayScore, ratings: result.ratings, cards: result.cards }),
+        );
+        for (const o of outcomes) {
+          const delta = o.achieved ? MATCH_GOAL_FORM_DELTA.met : MATCH_GOAL_FORM_DELTA.missed;
+          formDelta.set(o.playerId, (formDelta.get(o.playerId) ?? 0) + delta);
+        }
+        const lines = outcomes.map((o) => `${o.achieved ? "✅" : "❌"} ${o.playerName} — ${matchGoalLabel(o.kind, o.threshold)}: ${o.detail}.`);
+        await pushInbox(saveId, myClubId!, m.match_date, {
+          category: "result", sender: "Comissão técnica", subject: "Metas da partida",
+          body: lines.join("\n"),
+        });
+        await supabase.from("clubs").update({ player_match_goals: [] } as any).eq("id", myClubId!);
+      }
 
       // Evolução de familiaridade posicional: cada titular "pratica" a posição
       // em que foi escalado nesta partida (ver src/game/development.ts).

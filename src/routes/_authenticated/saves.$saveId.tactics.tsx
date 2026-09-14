@@ -15,6 +15,10 @@ import {
 } from "@/game/player-instructions";
 import { SET_PIECE_ROLES, suggestSetPieceTakers, type SetPieceRole } from "@/game/set-pieces";
 import { toTacticExport, parseTacticExport, TacticImportError } from "@/game/tactic-export";
+import {
+  MATCH_GOAL_KINDS, MATCH_GOAL_HAS_THRESHOLD, matchGoalDefaultThreshold, matchGoalLabel,
+  type MatchGoalKind, type PlayerMatchGoal,
+} from "@/game/match-goals";
 import { slotCoords } from "@/game/formation-layout";
 import { checkAvailability } from "@/game/availability";
 import { clubColors, contrastText } from "@/game/club-colors";
@@ -389,6 +393,34 @@ function TacticsPage() {
   function deletePreset(id: string) {
     presetsMutation.mutate(presets.filter((p) => p.id !== id));
     if (activePresetId === id) setActivePresetId(null);
+  }
+
+  // Metas individuais por partida (backlog FootSim #06) — some sozinho
+  // depois que a próxima partida resolve, ver advance-day.ts.
+  const matchGoals: PlayerMatchGoal[] = (club.data as any)?.player_match_goals ?? [];
+  const matchGoalsMutation = useMutation({
+    mutationFn: async (next: PlayerMatchGoal[]) => {
+      if (!clubId) return;
+      const { error } = await supabase.from("clubs").update({ player_match_goals: next } as any).eq("id", clubId);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["club-tactics", clubId] }),
+    onError: (e: any) => toast.error(e.message ?? "Erro ao salvar metas"),
+  });
+  const [goalPlayerId, setGoalPlayerId] = useState("");
+  const [goalKind, setGoalKind] = useState<MatchGoalKind>("score_goals");
+  const [goalThreshold, setGoalThreshold] = useState<number | undefined>(matchGoalDefaultThreshold("score_goals"));
+
+  function addMatchGoal() {
+    if (!goalPlayerId) return;
+    const playerName = playerNameById(goalPlayerId);
+    const next: PlayerMatchGoal = { playerId: goalPlayerId, playerName, kind: goalKind, threshold: goalThreshold };
+    matchGoalsMutation.mutate([...matchGoals.filter((g) => g.playerId !== goalPlayerId), next]);
+    setGoalPlayerId("");
+  }
+
+  function removeMatchGoal(playerId: string) {
+    matchGoalsMutation.mutate(matchGoals.filter((g) => g.playerId !== playerId));
   }
 
   const save_ = useMutation({
@@ -1300,6 +1332,66 @@ function TacticsPage() {
       <p className="fm-eyebrow mt-3">
         ★ = melhor do XI pra função. "Automático" segue esse melhor a cada jogo; escolher um nome fixa a preferência.
         Se o escolhido não jogar (lesão/poupado), o motor volta ao automático.
+      </p>
+    </Card>
+
+    <Card className="p-4">
+      <div className="fm-eyebrow mb-3">Metas da próxima partida</div>
+      <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto] items-end">
+        <div className="space-y-1">
+          <div className="text-xs font-semibold">Jogador</div>
+          <select
+            className="w-full h-8 px-2 rounded border bg-background text-xs"
+            value={goalPlayerId}
+            onChange={(e) => setGoalPlayerId(e.target.value)}
+          >
+            <option value="">Selecione…</option>
+            {xiPlayers.map((p: any) => (
+              <option key={p.id} value={p.id}>{p.squad_number ? `${p.squad_number} · ` : ""}{p.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <div className="text-xs font-semibold">Meta</div>
+          <select
+            className="w-full h-8 px-2 rounded border bg-background text-xs"
+            value={goalKind}
+            onChange={(e) => {
+              const kind = e.target.value as MatchGoalKind;
+              setGoalKind(kind);
+              setGoalThreshold(matchGoalDefaultThreshold(kind));
+            }}
+          >
+            {MATCH_GOAL_KINDS.map((k) => (
+              <option key={k} value={k}>{matchGoalLabel(k, matchGoalDefaultThreshold(k))}</option>
+            ))}
+          </select>
+        </div>
+        {MATCH_GOAL_HAS_THRESHOLD[goalKind] && (
+          <div className="space-y-1">
+            <div className="text-xs font-semibold">Limiar</div>
+            <input
+              type="number" min={goalKind === "good_rating" ? 1 : 1} step={goalKind === "good_rating" ? 0.5 : 1}
+              className="w-20 h-8 px-2 rounded border bg-background text-xs"
+              value={goalThreshold ?? matchGoalDefaultThreshold(goalKind) ?? 1}
+              onChange={(e) => setGoalThreshold(Number(e.target.value))}
+            />
+          </div>
+        )}
+        <Button size="sm" onClick={addMatchGoal} disabled={!goalPlayerId}>Adicionar</Button>
+      </div>
+      {matchGoals.length > 0 && (
+        <div className="mt-3 space-y-1">
+          {matchGoals.map((g) => (
+            <div key={g.playerId} className="flex items-center justify-between gap-2 rounded border px-2 py-1 text-xs">
+              <span><strong>{playerNameById(g.playerId)}</strong> — {matchGoalLabel(g.kind, g.threshold)}</span>
+              <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => removeMatchGoal(g.playerId)}>✕</Button>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="fm-eyebrow mt-3">
+        Vale só pra próxima partida do time — depois de resolvida, some sozinho e o resultado vai pro inbox.
       </p>
     </Card>
    </div>
