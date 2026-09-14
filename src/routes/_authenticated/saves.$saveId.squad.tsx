@@ -10,6 +10,8 @@ import { checkAvailability } from "@/game/availability";
 import { positionLabel } from "@/game/types";
 import { contractsAtRisk, CONTRACT_RISK_LABEL, type ContractRisk } from "@/game/contracts";
 import { proposeLoanOut, recallLoan, exerciseLoanBuyOption } from "@/lib/loans";
+import { loanOutProgress } from "@/game/loan-status";
+import { marketTrendFromForm } from "@/game/valuation";
 import { PageHeader, SubTabs, Pill, RatingBadge, EmptyState, type Tone } from "@/components/fm";
 import { DressingRoomView } from "@/components/dressing-room-view";
 import { Users, Search, RefreshCw, ArrowDownUp } from "lucide-react";
@@ -37,7 +39,7 @@ function Squad() {
   const [filter, setFilter] = useState("");
   const [sort, setSort] = useState<SortKey>("overall");
   const [posFilter, setPosFilter] = useState<string>("ALL");
-  const [view, setView] = useState<"list" | "room" | "contracts">("list");
+  const [view, setView] = useState<"list" | "room" | "contracts" | "loans">("list");
 
   const save = useQuery({
     queryKey: ["save", saveId],
@@ -56,8 +58,22 @@ function Squad() {
     queryKey: ["loaned-out", clubId],
     enabled: !!clubId,
     queryFn: async () => (await supabase
-      .from("players").select("id, name, position, overall, club_id, clubs!players_club_id_fkey(name)")
+      .from("players").select("id, name, position, overall, club_id, loan_return_date, clubs!players_club_id_fkey(name)")
       .eq("loaned_from_club_id", clubId!)).data ?? [],
+  });
+
+  // Empréstimos PRA o clube do usuário (item 10 do backlog FootSim) — esses
+  // jogadores já fazem parte do elenco carregado acima (players.data), com
+  // forma/presença/gols reais (o motor simula tudo isso normalmente pra
+  // quem está no elenco do usuário) — só falta o nome do clube de origem.
+  const loanedInOriginIds = useMemo(
+    () => Array.from(new Set((players.data ?? []).map((p: any) => p.loaned_from_club_id).filter(Boolean))),
+    [players.data],
+  );
+  const loanedInOrigins = useQuery({
+    queryKey: ["loaned-in-origins", loanedInOriginIds],
+    enabled: loanedInOriginIds.length > 0,
+    queryFn: async () => (await supabase.from("clubs").select("id, name").in("id", loanedInOriginIds)).data ?? [],
   });
 
   const loanOut = useMutation({
@@ -95,6 +111,9 @@ function Squad() {
     () => (todayISO ? contractsAtRisk(all, todayISO) : []),
     [all, todayISO],
   );
+
+  const loanedIn = useMemo(() => all.filter((p) => p.loaned_from_club_id), [all]);
+  const loanTotal = loanedIn.length + (loanedOut.data?.length ?? 0);
 
   const filtered = useMemo(() => {
     let list = [...all];
@@ -145,6 +164,7 @@ function Squad() {
         tabs={[
           { value: "list", label: "Lista de atletas" },
           { value: "contracts", label: "Contratos a vencer", badge: atRiskContracts.length || undefined },
+          { value: "loans", label: "Empréstimos", badge: loanTotal || undefined },
           { value: "room", label: "Dinâmica do vestiário" },
         ]}
       />
@@ -155,6 +175,16 @@ function Squad() {
           : <div className="text-sm text-muted-foreground">Carregando…</div>
       ) : view === "contracts" ? (
         <ContractsAtRiskList saveId={saveId} players={atRiskContracts} />
+      ) : view === "loans" ? (
+        <LoansView
+          saveId={saveId}
+          loanedIn={loanedIn}
+          loanedInOrigins={loanedInOrigins.data ?? []}
+          loanedOut={loanedOut.data ?? []}
+          todayISO={todayISO}
+          onRecall={(id) => recall.mutate(id)}
+          recallPending={recall.isPending}
+        />
       ) : (
       <>
       <SubTabs
@@ -266,27 +296,108 @@ function Squad() {
           />
         )}
       </Card>
-
-      {loanedOut.data && loanedOut.data.length > 0 && (
-        <Card className="p-4">
-          <div className="fm-eyebrow mb-3">Jogadores emprestados</div>
-          <div className="divide-y divide-border/50">
-            {loanedOut.data.map((p: any) => (
-              <div key={p.id} className="flex items-center justify-between py-2 text-sm">
-                <div>
-                  <span className="font-medium">{p.name}</span>{" "}
-                  <span className="text-muted-foreground">{p.position} · OVR {p.overall} · com {p.clubs?.name ?? "?"}</span>
-                </div>
-                <Button size="sm" variant="outline" onClick={() => recall.mutate(p.id)} disabled={recall.isPending}>
-                  Chamar de volta
-                </Button>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
       </>
       )}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Empréstimos (item 10 do backlog FootSim) — duas listas, escopo deliberadamente
+// assimétrico: "emprestados por você" (OUT, pro time de um clube de IA) só tem
+// progresso de prazo real (o motor não simula minutos/forma de clube de IA);
+// "emprestados pra você" (IN) já fazem parte do elenco simulado normalmente,
+// então mostram forma/presença/gols de verdade — nunca uma "felicidade"
+// inventada sem dado real por trás. Ver src/game/loan-status.ts.
+// -----------------------------------------------------------------------------
+function LoansView({
+  saveId, loanedIn, loanedInOrigins, loanedOut, todayISO, onRecall, recallPending,
+}: {
+  saveId: string; loanedIn: any[]; loanedInOrigins: any[]; loanedOut: any[]; todayISO?: string;
+  onRecall: (playerId: string) => void; recallPending: boolean;
+}) {
+  const originName = (clubId: string | null) => loanedInOrigins.find((c) => c.id === clubId)?.name ?? "?";
+
+  if (loanedIn.length === 0 && loanedOut.length === 0) {
+    return (
+      <EmptyState
+        icon={RefreshCw}
+        title="Nenhum empréstimo ativo"
+        description="Jogadores emprestados por você ou pra você aparecem aqui, com situação real do empréstimo."
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-4">
+        <div className="fm-eyebrow mb-3">Emprestados pra você ({loanedIn.length})</div>
+        {loanedIn.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum jogador emprestado por outro clube no momento.</p>
+        ) : (
+          <div className="divide-y divide-border/50">
+            {loanedIn.map((p) => {
+              const trend = marketTrendFromForm(p.form);
+              return (
+                <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                  <div>
+                    <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="font-medium hover:text-primary hover:underline">
+                      {p.name}
+                    </Link>{" "}
+                    <span className="text-muted-foreground">{positionLabel(p.natural_position ?? p.position)} · de {originName(p.loaned_from_club_id)}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span>{p.appearances_season ?? 0} jogos</span>
+                    <span>{p.goals_season ?? 0} gols</span>
+                    {trend !== "stable" && (
+                      <Pill tone={trend === "rising" ? "ok" : "danger"}>
+                        {trend === "rising" ? "↑ em forma" : "↓ fora de forma"}
+                      </Pill>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-4">
+        <div className="fm-eyebrow mb-3">Emprestados por você ({loanedOut.length})</div>
+        {loanedOut.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum jogador seu emprestado no momento.</p>
+        ) : (
+          <div className="divide-y divide-border/50">
+            {loanedOut.map((p) => {
+              const progress = todayISO && p.loan_return_date ? loanOutProgress(p.loan_return_date, todayISO) : null;
+              return (
+                <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 text-sm">
+                  <div className="min-w-[160px]">
+                    <span className="font-medium">{p.name}</span>{" "}
+                    <span className="text-muted-foreground">{positionLabel(p.position)} · OVR {p.overall} · com {p.clubs?.name ?? "?"}</span>
+                  </div>
+                  {progress && (
+                    <div className="flex min-w-[160px] items-center gap-2">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full bg-info" style={{ width: `${progress.progressPct}%` }} />
+                      </div>
+                      <span className="whitespace-nowrap text-xs text-muted-foreground">
+                        {progress.daysRemaining === 0 ? "volta a qualquer momento" : `volta em ${progress.daysRemaining}d`}
+                      </span>
+                    </div>
+                  )}
+                  <Button size="sm" variant="outline" onClick={() => onRecall(p.id)} disabled={recallPending}>
+                    Chamar de volta
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <p className="fm-eyebrow mt-3">
+          Sem forma/presença aqui de propósito: o motor não simula estatística individual de clube de IA — só sabemos o prazo real do empréstimo.
+        </p>
+      </Card>
     </div>
   );
 }
