@@ -10,6 +10,7 @@ import { importSeed, type Seed } from "@/lib/seed-import";
 import { generateScheduleForSave } from "@/lib/generate-schedule";
 import { formatMoney } from "@/lib/game-hooks";
 import { listSeedLibrary, loadSeedFromLibrary, saveSeedToLibrary, deleteSeedFromLibrary } from "@/lib/seed-library";
+import { loadFootballDb, hasFootballDb } from "@/lib/football-db";
 
 export const Route = createFileRoute("/_authenticated/saves/$saveId/setup")({
   head: () => ({ meta: [{ title: "Configurar save — TáticaFC" }] }),
@@ -125,6 +126,15 @@ function SetupPage() {
     }
   }
 
+  async function handleUseDefault() {
+    try {
+      const seed = await loadFootballDb();
+      await runImport(seed);
+    } catch (e: any) {
+      toast.error(e.message ?? "Falha ao carregar a base padrão");
+    }
+  }
+
   async function handleUseLibrary(id: string) {
     try {
       const seed = await loadSeedFromLibrary(id);
@@ -167,6 +177,20 @@ function SetupPage() {
         {!save.data?.seeded ? (
           <Card className="p-6 space-y-4">
             <h2 className="font-semibold">1. Importar base de dados</h2>
+
+            {hasFootballDb() && (
+              <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2.5">
+                <div>
+                  <div className="text-sm font-medium">Base padrão (times e jogadores reais)</div>
+                  <div className="text-xs text-muted-foreground">
+                    data/football-db/ — sem upload, dá pra editar os JSONs à mão a qualquer momento.
+                  </div>
+                </div>
+                <Button size="sm" disabled={importing} onClick={handleUseDefault}>
+                  Usar base padrão
+                </Button>
+              </div>
+            )}
 
             {library.data && library.data.length > 0 && (
               <div className="space-y-2">

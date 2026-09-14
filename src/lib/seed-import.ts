@@ -35,6 +35,11 @@ export interface SeedPlayer {
 }
 
 export interface SeedClub {
+  // Presente só na base "padrão" (data/football-db/, via football-db.ts) —
+  // é o "ID Único" do Genie Scout, chave estável pra ligar clube↔jogador
+  // entre clubs.json/players.json. importSeed() nunca lê isso (a ligação
+  // aqui dentro é por índice de array), é só um campo de passagem inofensivo.
+  id?: string | number;
   competition: string;
   name: string;
   short_name?: string | null;

@@ -45,3 +45,9 @@ dist-ssr
 # PGlite local (Fase 2 desktop offline)
 .pglite-schema-test/
 *.pglite/
+
+# Base "padrão" real (FM Genie Scout, uso pessoal licenciado) — gerada por
+# scripts/fm-csv-to-football-db.mjs, nunca commitada (mesmo padrão do
+# seed-fm24.json de sempre). Regenerável a qualquer momento contra os CSVs
+# do usuário.
+data/football-db/
