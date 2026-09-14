@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { formationSlots, autoLineup, rateTacticalTeam, ratingToDisplay, familiarityFor, TACTIC_STYLES } from "@/game/tactics";
 import { rolesForPosition, resolveRole, mirrorDiagramForCanonical, type RoleDef } from "@/game/roles";
 import {
@@ -14,13 +14,14 @@ import {
   type PlayerInstructions, type InstructionLevel,
 } from "@/game/player-instructions";
 import { SET_PIECE_ROLES, suggestSetPieceTakers, type SetPieceRole } from "@/game/set-pieces";
+import { toTacticExport, parseTacticExport, TacticImportError } from "@/game/tactic-export";
 import { slotCoords } from "@/game/formation-layout";
 import { checkAvailability } from "@/game/availability";
 import { clubColors, contrastText } from "@/game/club-colors";
 import { PageHeader, MeterBar, Pill, RatingBadge, ratingTone, TONE_TEXT } from "@/components/fm";
 import type { FormationCode, GranularPosition, Mentality, PassingStyle, TeamFluidity } from "@/game/types";
 import { positionLabel } from "@/game/types";
-import { Star, Target, X, ArrowLeftRight, SlidersHorizontal } from "lucide-react";
+import { Star, Target, X, ArrowLeftRight, SlidersHorizontal, Download, Upload } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/saves/$saveId/tactics")({
   component: TacticsPage,
@@ -222,6 +223,7 @@ function TacticsPage() {
   const [activePresetId, setActivePresetId] = useState<string | null>(null);
   const [newPresetOpen, setNewPresetOpen] = useState(false);
   const [newPresetName, setNewPresetName] = useState("");
+  const importInputRef = useRef<HTMLInputElement>(null);
   const presets: TacticPreset[] = (club.data as any)?.tactic_presets ?? [];
 
   useEffect(() => {
@@ -298,6 +300,52 @@ function TacticsPage() {
     for (const l of preset.lineup) map[l.slot] = { playerId: l.playerId, role: l.role, instructions: normalizeInstructions(l.instructions) };
     setSlotAssign(map);
     setActivePresetId(preset.id);
+  }
+
+  // Aplica um arquivo importado (item 05 do backlog FootSim) — mesmo
+  // espírito do loadPreset (só troca o rascunho, "Salvar" é que aplica de
+  // verdade), mas SEM playerId (o arquivo nunca carrega isso, ver
+  // src/game/tactic-export.ts) — os slots entram com função+instruções
+  // prontas, sem jogador escalado; quem importou escala pelos próprios
+  // meios (Auto-escalar ou clicar em cada boneco) igual já faz ao trocar de
+  // formação hoje.
+  function applyTacticImport(parsed: ReturnType<typeof parseTacticExport>) {
+    setFormation(parsed.formation);
+    setMentality(parsed.mentality);
+    setPressing(parsed.pressing);
+    setDefLine(parsed.defensive_line);
+    setTempo(parsed.tempo);
+    setPassing(parsed.passing_style);
+    setFluidity(parsed.team_fluidity);
+    const map: typeof slotAssign = {};
+    for (const s of parsed.slots) map[s.slot] = { playerId: "", role: s.role, instructions: s.instructions };
+    setSlotAssign(map);
+    setActivePresetId(null);
+  }
+
+  function exportCurrentTactic() {
+    const data = toTacticExport(currentTacticSnapshot());
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `tatica-${formation}-${mentality}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImportFile(file: File) {
+    try {
+      const text = await file.text();
+      const parsed = parseTacticExport(JSON.parse(text));
+      applyTacticImport(parsed);
+      toast.success("Tática importada — revise a escalação e clique em Salvar pra aplicar de verdade.");
+    } catch (e) {
+      const msg = e instanceof TacticImportError ? e.message
+        : e instanceof SyntaxError ? "Arquivo não é um JSON válido."
+        : "Falha ao importar arquivo.";
+      toast.error(msg);
+    }
   }
 
   const presetsMutation = useMutation({
@@ -530,6 +578,38 @@ function TacticsPage() {
               Clique num número pra carregar o esquema (só troca a tela — "Salvar" embaixo é que aplica de verdade).
             </p>
           )}
+          <div className="mt-2 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={exportCurrentTactic}
+              title="Exportar tática atual como arquivo .json"
+              className="flex h-7 items-center gap-1 rounded-md border border-border px-2 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Download className="size-3" /> Exportar
+            </button>
+            <button
+              type="button"
+              onClick={() => importInputRef.current?.click()}
+              title="Importar tática de um arquivo .json (formação + função + instruções, sem escalação)"
+              className="flex h-7 items-center gap-1 rounded-md border border-border px-2 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Upload className="size-3" /> Importar
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleImportFile(f);
+                e.target.value = "";
+              }}
+            />
+          </div>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Importar traz formação, função e instruções por posição — nunca jogadores específicos (só existem no save de origem). Escale o elenco depois.
+          </p>
         </div>
 
         <div>
