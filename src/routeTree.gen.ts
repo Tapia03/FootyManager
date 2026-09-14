@@ -9,7 +9,6 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
@@ -32,11 +31,6 @@ import { Route as AuthenticatedSavesSaveIdAnalysisRouteImport } from './routes/_
 import { Route as AuthenticatedSavesSaveIdAcademyRouteImport } from './routes/_authenticated/saves.$saveId.academy'
 import { Route as AuthenticatedSavesSaveIdPlayersPlayerIdRouteImport } from './routes/_authenticated/saves.$saveId.players.$playerId'
 
-const AuthRoute = AuthRouteImport.update({
-  id: '/auth',
-  path: '/auth',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
@@ -162,7 +156,6 @@ const AuthenticatedSavesSaveIdPlayersPlayerIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/saves/$saveId': typeof AuthenticatedSavesSaveIdRouteWithChildren
   '/saves/$saveId/academy': typeof AuthenticatedSavesSaveIdAcademyRoute
@@ -185,7 +178,6 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/saves/$saveId/academy': typeof AuthenticatedSavesSaveIdAcademyRoute
   '/saves/$saveId/analysis': typeof AuthenticatedSavesSaveIdAnalysisRoute
@@ -209,7 +201,6 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
-  '/auth': typeof AuthRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/saves/$saveId': typeof AuthenticatedSavesSaveIdRouteWithChildren
   '/_authenticated/saves/$saveId/academy': typeof AuthenticatedSavesSaveIdAcademyRoute
@@ -234,7 +225,6 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/auth'
     | '/dashboard'
     | '/saves/$saveId'
     | '/saves/$saveId/academy'
@@ -257,7 +247,6 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/auth'
     | '/dashboard'
     | '/saves/$saveId/academy'
     | '/saves/$saveId/analysis'
@@ -280,7 +269,6 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_authenticated'
-    | '/auth'
     | '/_authenticated/dashboard'
     | '/_authenticated/saves/$saveId'
     | '/_authenticated/saves/$saveId/academy'
@@ -305,18 +293,10 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
-  AuthRoute: typeof AuthRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/auth': {
-      id: '/auth'
-      path: '/auth'
-      fullPath: '/auth'
-      preLoaderRoute: typeof AuthRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_authenticated': {
       id: '/_authenticated'
       path: ''
@@ -533,7 +513,6 @@ const AuthenticatedRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
-  AuthRoute: AuthRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

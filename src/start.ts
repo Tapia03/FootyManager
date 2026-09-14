@@ -1,8 +1,10 @@
 import { createStart, createMiddleware } from "@tanstack/react-start";
 
 import { renderErrorPage } from "./lib/error-page";
-import { attachSupabaseAuth } from "@/integrations/supabase/auth-attacher";
 
+// Sem auth de verdade (app 100% desktop, banco local sem sessão/JWT) — não
+// precisa mais anexar token nenhum nas server functions. Ver
+// project_desktop_windows_offline.md na memória do projeto.
 const errorMiddleware = createMiddleware().server(async ({ next }) => {
   try {
     return await next();
@@ -19,6 +21,5 @@ const errorMiddleware = createMiddleware().server(async ({ next }) => {
 });
 
 export const startInstance = createStart(() => ({
-  functionMiddleware: [attachSupabaseAuth],
   requestMiddleware: [errorMiddleware],
 }));

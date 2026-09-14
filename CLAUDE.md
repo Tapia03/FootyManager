@@ -14,12 +14,14 @@ Comece SEMPRE por `MEMORY.md` nessa pasta (índice) e siga os links pros arquivo
 
 ## Stack
 
-- **TanStack Start** (React 19, rotas por arquivo em `src/routes/`, SPA) + **TanStack Router** + **TanStack Query**
-- **Supabase** (Postgres + PostgREST) como backend — projeto gerenciado pelo **Lovable** (não é um projeto Supabase "linkado" via CLI normal)
+- **App 100% desktop Windows (Tauri)** — não existe mais versão web nem dependência da Lovable (removida de vez em 13/09/2026, ver `project_desktop_windows_offline.md` e `project_no_lovable_migration.md` na memória). Não recriar `@lovable.dev/*`, `nitro`/Cloudflare, nem tela de login — foram removidos de propósito.
+- **TanStack Start** (React 19, rotas por arquivo em `src/routes/`, sempre buildado em modo SPA estático — `spa: { enabled: true }` no `vite.config.ts`) + **TanStack Router** + **TanStack Query**
+- Backend: **PGlite + PostgREST reais**, ambos embutidos no app via sidecar do Tauri (`src-tauri/src/lib.rs` sobe os dois sozinho quando o app abre). Sem login — cada save é um perfil local (`src/lib/desktop-mode.ts`). O client (`src/integrations/supabase/client.ts`) usa `@supabase/supabase-js` só como client HTTP genérico de PostgREST, apontado por padrão pra `http://127.0.0.1:3111` — não tem nuvem nenhuma envolvida.
 - **Tailwind v4** + **shadcn/radix** (`src/components/ui/*`) pra primitivas, **`src/components/fm.tsx`** é o kit de UI PRÓPRIO do app (PageHeader, MetricCard, StatBar, MeterBar, Pill, SubTabs, HeroBanner, SplitView, EmptyState, RatingBadge, ProsConsList, SubViewDropdown) — **sempre construir telas novas com esse kit**, nunca estilizar na mão do zero.
 - **Three.js** pro motor 3D da partida (`match-3d-pitch.tsx`)
 - **Vitest** pra testes (`src/game/__tests__/`)
-- Dev server: `npm run dev` (vite, porta configurada em `.claude/launch.json` como "footymanager-dev", autoPort ligado porque 3000/8080 costumam estar ocupadas)
+- Dev (navegador, iteração rápida): `npm run dev:backend` num terminal (sobe PGlite+PostgREST locais, deixa aberto) + `npm run dev` (vite) em outro. Porta do vite configurada em `.claude/launch.json` como "footymanager-dev", autoPort ligado porque 3000/8080 costumam estar ocupadas.
+- App de verdade: `npm run build` (ou `build:desktop`, mesma coisa) + `npx tauri build` (dentro de `src-tauri/`, precisa `export PATH="$USERPROFILE/.cargo/bin:$PATH"` antes se o Rust não estiver no PATH da sessão). **Nunca testar visualmente com `cargo build --release` sozinho** — pula as env vars de produção que só a CLI do Tauri define, e o app tenta carregar `devUrl` (localhost:3000) em vez do bundle real.
 
 ## Como o usuário trabalha comigo
 
@@ -47,20 +49,13 @@ Pontos importantes já aprendidos (não repetir os erros):
 - `src/routes/_authenticated/saves.$saveId.*.tsx` — telas (uma por rota: tactics, squad, calendar, analysis, medical, academy, staff, market, news, board, finances, table, cup, career, players.$playerId).
 - Visualização de partida: `match-pitch.tsx` (2D), `match-3d-pitch.tsx` (3D, Three.js), `match-viewer.tsx` (envelope 2D/3D + integração), `src/hooks/use-highlight-playback.ts` (motor de checkpoint/highlight compartilhado pelos dois).
 
-## Processo de migration/SQL (Supabase via Lovable)
+## Processo de migration/SQL (banco local, sem nuvem)
 
-O projeto NÃO está "linkado" via `supabase login`/`link` (não aparece em `supabase projects list` desta conta CLI). O que funciona:
+Não existe mais banco de produção na nuvem (Lovable/Supabase removidos de vez) — cada usuário tem seu próprio banco local (PGlite) dentro do app. Migrations vivem em `supabase/migrations/*.sql` (nome mantido por histórico, não tem nada de Supabase Cloud nisso) e são aplicadas automaticamente por `scripts/local-db-server.mjs` na primeira vez que o banco local abre.
 
-```bash
-cd "caminho do projeto"
-set -a && source .env && set +a   # carrega SUPABASE_DB_URL
-npx supabase db query --db-url "$SUPABASE_DB_URL" "<UMA instrução SQL>"
-```
-
-- **Uma instrução por chamada** — `-f`/multi-statement não funciona nesse projeto (um bloco `DO $$ ... $$` conta como UMA instrução mesmo com várias linhas dentro, então isso é seguro).
-- Depois de `ALTER TABLE ADD COLUMN`, rodar `NOTIFY pgrst, 'reload schema';` como chamada separada — mas o cache do PostgREST pode demorar alguns segundos/minutos pra propagar mesmo depois do NOTIFY (se um `.update()` na coluna nova der 400 logo depois da migration, é isso, não bug de código — esperar e tentar de novo).
-- `src/integrations/supabase/types.ts` (tipos gerados) **não são regenerados** depois dessas migrations ad-hoc — o padrão do projeto é usar `as any` no `.update()`/leitura da coluna nova (ver `penalty_taker_id`, `team_fluidity`, `pending_override` etc. como exemplos).
-- Toda ação que grava/altera dados na base de PRODUÇÃO real precisa de aprovação explícita do usuário antes — inclusive coisas como rebobinar `game_date` de um save de teste pra verificação ao vivo.
+- **Cuidado real**: `ensureSchema()` em `local-db-server.mjs` só roda as migrations se a tabela `saves` ainda não existir — ou seja, um banco local que já tem um save NÃO reaplica migrations novas sozinho. Ainda não existe um mecanismo de "migração incremental" pra bancos locais já existentes — ao adicionar uma migration nova durante o desenvolvimento, apagar `.local-db-data/` (dev) ou o `db/` dentro do `app_data_dir` do Tauri pra recriar do zero, OU escrever a migration de um jeito que também rode como `ALTER` idempotente em cima de um banco já existente (registrar isso na memória se virar problema recorrente).
+- `src/integrations/supabase/types.ts` (tipos gerados, convenção antiga da Lovable) não é mais regenerado por ferramenta nenhuma — o padrão de usar `as any` em colunas novas continua valendo até alguém regenerar esse arquivo na mão contra o schema local.
+- Testar uma migration nova: `node scripts/local-db-server.mjs` isolado, ou `npm run dev:backend` completo (banco + PostgREST) — ver seção Stack.
 
 ## Testes e verificação
 
@@ -77,6 +72,7 @@ npx supabase db query --db-url "$SUPABASE_DB_URL" "<UMA instrução SQL>"
 - **Fase 6** (motor 3D nível FM Touch: torcida, pós-processamento, performance, jogadores procedurais, estádio, animações, som, broadcast) — **completa**.
 - **Fase 7** (identidade visual FM21 Touch) — em andamento. Feito: tela de táticas reformada (popup de troca/função/instruções, bonecos-camisa, mini-diagrama de função, templates de estilo, badges/prós-contras consistentes, elenco do dia de jogo, dropdown de sub-view, animação de avanço de dia, **tela de calendário em grade** (grid mês/semana com eventos por dia), **tela de táticas "exatamente igual à FM"** (toggles por fase Em Posse/Transição/Sem a Bola, Team Fluidity com efeito real, override "só a próxima partida"), **campo 2D no visual certo do FM21 Touch** (paisagem, confirmado por vídeo dedicado). Pendente/registrado: dashboard multi-painel de "tempo morto" entre lances, ticker de comentário contínuo, configurações de câmera/velocidade expostas na UI, brasão/kit/rosto procedural com upload custom, e vários achados menores catalogados na memória (mentoria, scouting avançado, empréstimos com sparkline, lance como lance próprio, etc.) ainda sem tarefa formal.
 - **Motor de partida** (Blocos IFAB + granularidade): árbitro/clima/acréscimo dinâmico/impedimento/regras de goleiro, prorrogação+VAR no mata-mata, e micro-eventos de textura (pressão/marcação/corrida de apoio/chute de fora/drible) conectados a instrução de jogador e diagrama de função real — tudo **completo e testado**.
+- **App desktop Windows sem Lovable** (Tauri + PGlite + PostgREST local, sem login) — **completo**: sidecars sobem sozinhos, DLLs do Postgres baixadas via script automatizado, dependência da Lovable removida de vez do código (auth, build config, client gerado). Ver `project_desktop_windows_offline.md` e `project_no_lovable_migration.md`.
 
 ## Import de base de dados real
 

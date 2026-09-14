@@ -1,24 +1,64 @@
-// @lovable.dev/vite-tanstack-config already includes the following — do NOT add them manually
-// or the app will break with duplicate plugins:
-//   - tanstackStart, viteReact, tailwindcss, tsConfigPaths, nitro (build-only using cloudflare as a default target),
-//     componentTagger (dev-only), VITE_* env injection, @ path alias, React/TanStack dedupe,
-//     error logger plugins, and sandbox detection (port/host/strictPort).
-// You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
-import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { defineConfig, loadEnv } from "vite";
+import { resolve } from "node:path";
+import viteReact from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import tsConfigPaths from "vite-tsconfig-paths";
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 
-// Build para o app desktop (Tauri): sem SSR sob demanda, sem Cloudflare —
-// gera um dist/client/ 100% estático que o Tauri empacota dentro do .exe.
-// Ativado só via `DESKTOP_BUILD=1 vite build` (script "build:desktop" no
-// package.json), pra não afetar o build web normal que a Lovable usa.
-// Ver project_desktop_windows_offline.md na memória do projeto.
-const isDesktopBuild = process.env.DESKTOP_BUILD === "1";
+// Config própria do projeto — sem depender de nenhum pacote da Lovable.
+// O app agora é 100% desktop (Tauri + PGlite local), não existe mais build
+// pra web/Cloudflare, então o build já sai sempre em modo estático (SPA):
+// TanStack Start prerenderiza um `_shell.html` (ver scripts/build-desktop.mjs,
+// que copia isso pra `index.html`, nome que o Tauri espera). Ver
+// project_desktop_windows_offline.md na memória do projeto.
+export default defineConfig(({ mode }) => {
+  // Replica o comportamento padrão do Vite pra variáveis VITE_* — env vars
+  // já definidas no processo (ex. passadas via spawnSync em build-desktop.mjs)
+  // têm prioridade sobre o que estiver em arquivos .env, que é o mesmo
+  // comportamento nativo do `loadEnv`.
+  const env = loadEnv(mode, process.cwd(), "VITE_");
+  const envDefine: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    envDefine[`import.meta.env.${key}`] = JSON.stringify(value);
+  }
 
-export default defineConfig({
-  tanstackStart: {
-    // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
-    // nitro/vite builds from this
-    server: { entry: "server" },
-    ...(isDesktopBuild ? { spa: { enabled: true } } : {}),
-  },
-  ...(isDesktopBuild ? { nitro: false as const } : {}),
+  return {
+    define: envDefine,
+    css: { transformer: "lightningcss" },
+    resolve: {
+      alias: { "@": resolve(__dirname, "./src") },
+      dedupe: [
+        "react",
+        "react-dom",
+        "react/jsx-runtime",
+        "react/jsx-dev-runtime",
+        "@tanstack/react-query",
+        "@tanstack/query-core",
+      ],
+    },
+    optimizeDeps: {
+      include: ["react", "react-dom", "react-dom/client", "react/jsx-runtime", "react/jsx-dev-runtime"],
+      ignoreOutdatedRequests: true,
+    },
+    server: { host: "::", port: 8080 },
+    plugins: [
+      tailwindcss(),
+      tsConfigPaths({ projects: ["./tsconfig.json"] }),
+      tanstackStart({
+        importProtection: {
+          behavior: "error",
+          client: { files: ["**/server/**"], specifiers: ["server-only"] },
+        },
+        // Redireciona o entry de servidor do TanStack Start pro nosso
+        // wrapper de erro (src/server.ts) — usado só durante o prerender
+        // do build, não sobra servidor rodando em produção.
+        server: { entry: "server" },
+        // Gera um shell estático real (_shell.html) em vez de depender de
+        // SSR sob demanda — é isso que o Tauri consegue empacotar dentro
+        // do app nativo, sem precisar de servidor Node no runtime do usuário.
+        spa: { enabled: true },
+      }),
+      viteReact(),
+    ],
+  };
 });

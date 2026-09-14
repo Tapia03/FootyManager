@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/game-hooks";
-import { getCurrentUserId, isDesktopBuild } from "@/lib/desktop-mode";
+import { getCurrentUserId } from "@/lib/desktop-mode";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({ meta: [{ title: "Meus saves — TáticaFC" }] }),
@@ -33,7 +33,6 @@ function Dashboard() {
   const create = useMutation({
     mutationFn: async (vars: { name: string; managerName: string }) => {
       const userId = await getCurrentUserId();
-      if (!userId) throw new Error("Não autenticado");
       const { data, error } = await supabase
         .from("saves")
         .insert({ name: vars.name, user_id: userId, manager_name: vars.managerName || "Técnico" })
@@ -57,19 +56,11 @@ function Dashboard() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["saves"] }),
   });
 
-  async function signOut() {
-    await supabase.auth.signOut();
-    navigate({ to: "/auth", replace: true });
-  }
-
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-5xl mx-auto px-4 py-4">
           <h1 className="text-xl font-bold">TáticaFC</h1>
-          {!isDesktopBuild && (
-            <Button variant="ghost" size="sm" onClick={signOut}>Sair</Button>
-          )}
         </div>
       </header>
 
