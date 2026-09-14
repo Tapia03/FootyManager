@@ -25,7 +25,7 @@ const formatBRL = (n: number) =>
   : `R$ ${Math.round(n)}`;
 import { sponsorIncome, gateIncome, facilityFactor } from "@/game/board";
 import { pickAiMatchTactics } from "@/game/ai-tactics";
-import { adjustMarketValue } from "@/game/valuation";
+import { adjustMarketValue, applyFormMarketMomentum } from "@/game/valuation";
 
 // Avança um dia: simula todas as partidas cuja data == current_date.
 // Estratégia: para eficiência, para partidas que não envolvem o clube do usuário,
@@ -555,7 +555,14 @@ export async function advanceDays(
       const nc = clamp01_100((p.condition ?? 100) + (condDelta.get(p.id) ?? 0));
       const prog = progressById.get(p.id);
       const patch: any = {};
-      if (nf !== p.form) patch.form = nf;
+      if (nf !== p.form) {
+        patch.form = nf;
+        // Valorização por sequência de desempenho (backlog FootSim #07) — usa
+        // o delta de forma REALMENTE aplicado (já pós-clamp), não o bruto,
+        // senão um jogador já no teto/piso de forma continuaria "ganhando"
+        // valor por um delta que na prática não mudou a forma dele em nada.
+        patch.market_value = applyFormMarketMomentum(p.market_value, nf - (p.form ?? 70));
+      }
       if (nc !== p.condition) patch.condition = nc;
       if (prog) {
         patch.position_progress = prog.position_progress;

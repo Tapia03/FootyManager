@@ -15,6 +15,7 @@ import {
   type AttributeKey, type PlayerAttributes,
 } from "@/game/attributes";
 import { familiarityFor } from "@/game/tactics";
+import { marketTrendFromForm } from "@/game/valuation";
 import { GRANULAR_POSITIONS, positionLabel } from "@/game/types";
 import { clubColors, contrastText } from "@/game/club-colors";
 import { RadarChart, Pill, ProsConsList, RatingBadge } from "@/components/fm";
@@ -165,6 +166,8 @@ function PlayerDetail() {
   const cmpAttrs = (cmp?.attributes ?? {}) as unknown as PlayerAttributes;
   const cmpRadar = cmp ? radarScores(cmpAttrs, ((cmp.position as any) ?? "MID")) : undefined;
 
+  const marketTrend = marketTrendFromForm(p.form);
+
   const kit = clubColors({
     id: p.club_id ?? p.id,
     primary_color: (p.clubs as any)?.primary_color,
@@ -225,13 +228,27 @@ function PlayerDetail() {
         )}
 
         <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
-          <Field label="Valor" value={tier.showValue ? formatMoney(p.market_value) : "Desconhecido"} />
+          <Field
+            label="Valor"
+            value={
+              tier.showValue ? (
+                <span className="inline-flex items-center gap-1.5">
+                  {formatMoney(p.market_value)}
+                  {isMine && marketTrend !== "stable" && (
+                    <Pill tone={marketTrend === "rising" ? "ok" : "danger"}>
+                      {marketTrend === "rising" ? "↑ valorizando" : "↓ desvalorizando"}
+                    </Pill>
+                  )}
+                </span>
+              ) : "Desconhecido"
+            }
+          />
           <Field label="Salário (quinzenal)" value={isMine || tier.showValue ? formatMoney(p.wage) : "—"} />
           <Field label="Contrato até" value={isMine ? (p.contract_until ? formatDate(p.contract_until) : "—") : "—"} />
           {isMine && (<>
             <Field label="Moral" value={p.morale} />
             <Field label="Condição" value={`${p.condition}%`} />
-            <Field label="Forma" value={`${p.form}/10`} />
+            <Field label="Forma" value={p.form} />
             <Field label="Gols na carreira" value={p.career_goals ?? 0} />
             <Field label="Jogos na carreira" value={p.career_appearances ?? 0} />
           </>)}
