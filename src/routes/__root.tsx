@@ -101,10 +101,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
+// Aplica o tema salvo ANTES da primeira pintura, pra não piscar claro→escuro
+// no load. Roda antes de qualquer bundle carregar, por isso é inline e não
+// importa src/lib/theme.ts (esse módulo só existe depois do JS carregar).
+const THEME_INIT_SCRIPT = `(function(){try{if(localStorage.getItem('taticafc-theme')==='dark')document.documentElement.classList.add('dark');}catch(e){}})();`;
+
 function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <HeadContent />
       </head>
       <body>

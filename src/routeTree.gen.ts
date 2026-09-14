@@ -19,6 +19,7 @@ import { Route as AuthenticatedSavesSaveIdTableRouteImport } from './routes/_aut
 import { Route as AuthenticatedSavesSaveIdStaffRouteImport } from './routes/_authenticated/saves.$saveId.staff'
 import { Route as AuthenticatedSavesSaveIdSquadRouteImport } from './routes/_authenticated/saves.$saveId.squad'
 import { Route as AuthenticatedSavesSaveIdSetupRouteImport } from './routes/_authenticated/saves.$saveId.setup'
+import { Route as AuthenticatedSavesSaveIdSettingsRouteImport } from './routes/_authenticated/saves.$saveId.settings'
 import { Route as AuthenticatedSavesSaveIdNewsRouteImport } from './routes/_authenticated/saves.$saveId.news'
 import { Route as AuthenticatedSavesSaveIdMedicalRouteImport } from './routes/_authenticated/saves.$saveId.medical'
 import { Route as AuthenticatedSavesSaveIdMarketRouteImport } from './routes/_authenticated/saves.$saveId.market'
@@ -85,6 +86,12 @@ const AuthenticatedSavesSaveIdSetupRoute =
   AuthenticatedSavesSaveIdSetupRouteImport.update({
     id: '/setup',
     path: '/setup',
+    getParentRoute: () => AuthenticatedSavesSaveIdRoute,
+  } as any)
+const AuthenticatedSavesSaveIdSettingsRoute =
+  AuthenticatedSavesSaveIdSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
     getParentRoute: () => AuthenticatedSavesSaveIdRoute,
   } as any)
 const AuthenticatedSavesSaveIdNewsRoute =
@@ -168,6 +175,7 @@ export interface FileRoutesByFullPath {
   '/saves/$saveId/market': typeof AuthenticatedSavesSaveIdMarketRoute
   '/saves/$saveId/medical': typeof AuthenticatedSavesSaveIdMedicalRoute
   '/saves/$saveId/news': typeof AuthenticatedSavesSaveIdNewsRoute
+  '/saves/$saveId/settings': typeof AuthenticatedSavesSaveIdSettingsRoute
   '/saves/$saveId/setup': typeof AuthenticatedSavesSaveIdSetupRoute
   '/saves/$saveId/squad': typeof AuthenticatedSavesSaveIdSquadRoute
   '/saves/$saveId/staff': typeof AuthenticatedSavesSaveIdStaffRoute
@@ -189,6 +197,7 @@ export interface FileRoutesByTo {
   '/saves/$saveId/market': typeof AuthenticatedSavesSaveIdMarketRoute
   '/saves/$saveId/medical': typeof AuthenticatedSavesSaveIdMedicalRoute
   '/saves/$saveId/news': typeof AuthenticatedSavesSaveIdNewsRoute
+  '/saves/$saveId/settings': typeof AuthenticatedSavesSaveIdSettingsRoute
   '/saves/$saveId/setup': typeof AuthenticatedSavesSaveIdSetupRoute
   '/saves/$saveId/squad': typeof AuthenticatedSavesSaveIdSquadRoute
   '/saves/$saveId/staff': typeof AuthenticatedSavesSaveIdStaffRoute
@@ -213,6 +222,7 @@ export interface FileRoutesById {
   '/_authenticated/saves/$saveId/market': typeof AuthenticatedSavesSaveIdMarketRoute
   '/_authenticated/saves/$saveId/medical': typeof AuthenticatedSavesSaveIdMedicalRoute
   '/_authenticated/saves/$saveId/news': typeof AuthenticatedSavesSaveIdNewsRoute
+  '/_authenticated/saves/$saveId/settings': typeof AuthenticatedSavesSaveIdSettingsRoute
   '/_authenticated/saves/$saveId/setup': typeof AuthenticatedSavesSaveIdSetupRoute
   '/_authenticated/saves/$saveId/squad': typeof AuthenticatedSavesSaveIdSquadRoute
   '/_authenticated/saves/$saveId/staff': typeof AuthenticatedSavesSaveIdStaffRoute
@@ -237,6 +247,7 @@ export interface FileRouteTypes {
     | '/saves/$saveId/market'
     | '/saves/$saveId/medical'
     | '/saves/$saveId/news'
+    | '/saves/$saveId/settings'
     | '/saves/$saveId/setup'
     | '/saves/$saveId/squad'
     | '/saves/$saveId/staff'
@@ -258,6 +269,7 @@ export interface FileRouteTypes {
     | '/saves/$saveId/market'
     | '/saves/$saveId/medical'
     | '/saves/$saveId/news'
+    | '/saves/$saveId/settings'
     | '/saves/$saveId/setup'
     | '/saves/$saveId/squad'
     | '/saves/$saveId/staff'
@@ -281,6 +293,7 @@ export interface FileRouteTypes {
     | '/_authenticated/saves/$saveId/market'
     | '/_authenticated/saves/$saveId/medical'
     | '/_authenticated/saves/$saveId/news'
+    | '/_authenticated/saves/$saveId/settings'
     | '/_authenticated/saves/$saveId/setup'
     | '/_authenticated/saves/$saveId/squad'
     | '/_authenticated/saves/$saveId/staff'
@@ -365,6 +378,13 @@ declare module '@tanstack/react-router' {
       path: '/setup'
       fullPath: '/saves/$saveId/setup'
       preLoaderRoute: typeof AuthenticatedSavesSaveIdSetupRouteImport
+      parentRoute: typeof AuthenticatedSavesSaveIdRoute
+    }
+    '/_authenticated/saves/$saveId/settings': {
+      id: '/_authenticated/saves/$saveId/settings'
+      path: '/settings'
+      fullPath: '/saves/$saveId/settings'
+      preLoaderRoute: typeof AuthenticatedSavesSaveIdSettingsRouteImport
       parentRoute: typeof AuthenticatedSavesSaveIdRoute
     }
     '/_authenticated/saves/$saveId/news': {
@@ -458,6 +478,7 @@ interface AuthenticatedSavesSaveIdRouteChildren {
   AuthenticatedSavesSaveIdMarketRoute: typeof AuthenticatedSavesSaveIdMarketRoute
   AuthenticatedSavesSaveIdMedicalRoute: typeof AuthenticatedSavesSaveIdMedicalRoute
   AuthenticatedSavesSaveIdNewsRoute: typeof AuthenticatedSavesSaveIdNewsRoute
+  AuthenticatedSavesSaveIdSettingsRoute: typeof AuthenticatedSavesSaveIdSettingsRoute
   AuthenticatedSavesSaveIdSetupRoute: typeof AuthenticatedSavesSaveIdSetupRoute
   AuthenticatedSavesSaveIdSquadRoute: typeof AuthenticatedSavesSaveIdSquadRoute
   AuthenticatedSavesSaveIdStaffRoute: typeof AuthenticatedSavesSaveIdStaffRoute
@@ -482,6 +503,8 @@ const AuthenticatedSavesSaveIdRouteChildren: AuthenticatedSavesSaveIdRouteChildr
     AuthenticatedSavesSaveIdMarketRoute: AuthenticatedSavesSaveIdMarketRoute,
     AuthenticatedSavesSaveIdMedicalRoute: AuthenticatedSavesSaveIdMedicalRoute,
     AuthenticatedSavesSaveIdNewsRoute: AuthenticatedSavesSaveIdNewsRoute,
+    AuthenticatedSavesSaveIdSettingsRoute:
+      AuthenticatedSavesSaveIdSettingsRoute,
     AuthenticatedSavesSaveIdSetupRoute: AuthenticatedSavesSaveIdSetupRoute,
     AuthenticatedSavesSaveIdSquadRoute: AuthenticatedSavesSaveIdSquadRoute,
     AuthenticatedSavesSaveIdStaffRoute: AuthenticatedSavesSaveIdStaffRoute,

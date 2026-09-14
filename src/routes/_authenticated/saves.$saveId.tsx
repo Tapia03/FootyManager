@@ -24,7 +24,7 @@ import { liveMatchStats, shotMapEntries, xgMomentum, coachingAnalysis } from "@/
 import { SHOUTS, resolveShout, type ShoutId } from "@/game/shouts";
 import { TEAM_TALKS, resolveTeamTalk, type TeamTalkId } from "@/game/team-talk";
 import {
-  LayoutDashboard, Users, Target, CalendarDays, ListOrdered, Wallet, ArrowLeftRight, ChevronLeft, HeartPulse, Trophy, Briefcase, Landmark, Newspaper, GraduationCap, Award, BarChart3,
+  LayoutDashboard, Users, Target, CalendarDays, ListOrdered, Wallet, ArrowLeftRight, ChevronLeft, HeartPulse, Trophy, Briefcase, Landmark, Newspaper, GraduationCap, Award, BarChart3, Settings,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/saves/$saveId")({
@@ -432,6 +432,7 @@ function SaveLayout() {
     { to: "/saves/$saveId/career", label: "Carreira", icon: Award },
     { to: "/saves/$saveId/market", label: "Mercado", icon: ArrowLeftRight },
     { to: "/saves/$saveId/news", label: "Caixa de entrada", icon: Newspaper },
+    { to: "/saves/$saveId/settings", label: "Configurações", icon: Settings },
   ] as const;
 
   const initials = (club.data?.short_name ?? club.data?.name ?? "?")
