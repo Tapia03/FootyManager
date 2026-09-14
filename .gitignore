@@ -4,6 +4,8 @@ dist/
 .tanstack/
 src-tauri/target/
 .local-db-data/
+.local-db-data-*/
+.local-db-data.corrupted-backup*/
 .wrangler/
 *.log
 # Logs
