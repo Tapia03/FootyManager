@@ -12,6 +12,7 @@ import { initialBidFee, loanReferenceValue } from "@/game/transfer-negotiation";
 import { isTransferWindowOpen, currentWindowLabel, daysUntilNextWindow } from "@/game/transfer-window";
 import { dismissTransferRequest, listTransferRequest } from "@/lib/transfer-requests";
 import { recommendSignings } from "@/game/scout-recommendations";
+import { nationalityFlag } from "@/lib/nationality-flag";
 import { PageHeader, EmptyState } from "@/components/fm";
 import { ArrowLeftRight, Search, AlertTriangle, UserPlus, CheckCircle2 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -68,11 +69,13 @@ function Market() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("players")
-        .select("id, name, position, overall, market_value, clubs!players_club_id_fkey(name)")
+        .select("id, name, position, overall, market_value, nationality, clubs!players_club_id_fkey(name)")
         .eq("save_id", saveId).neq("club_id", myClubId!)
         .order("overall", { ascending: false }).limit(80);
       if (error) throw error;
-      return data ?? [];
+      // as any[]: nationality ainda não está em types.ts (convenção do
+      // projeto até regenerar esse arquivo — ver CLAUDE.md).
+      return (data ?? []) as any[];
     },
   });
   const recommendations = useMemo(
@@ -86,7 +89,7 @@ function Market() {
     queryFn: async () => {
       let query = supabase
         .from("players")
-        .select("id, name, age, position, overall, market_value, wage, club_id, scout_knowledge, clubs!players_club_id_fkey(name, short_name, reputation)")
+        .select("id, name, age, position, overall, market_value, wage, club_id, scout_knowledge, nationality, clubs!players_club_id_fkey(name, short_name, reputation)")
         .eq("save_id", saveId)
         .neq("club_id", myClubId!)
         // Agente livre (club_id null) tem seção própria mais abaixo — sem
@@ -97,7 +100,7 @@ function Market() {
         .gte("overall", minOvr)
         .order("overall", { ascending: false })
         .limit(60);
-      if (q) query = query.ilike("name", `%${q}%`);
+      if (q) query = query.or(`name.ilike.%${q}%,nationality.ilike.%${q}%`);
       const { data, error } = await query;
       if (error) throw error;
       return data ?? [];
@@ -113,12 +116,12 @@ function Market() {
     queryFn: async () => {
       let query = supabase
         .from("players")
-        .select("id, name, age, position, overall, wage, attributes")
+        .select("id, name, age, position, overall, wage, attributes, nationality")
         .eq("save_id", saveId)
         .is("club_id", null)
         .order("overall", { ascending: false })
         .limit(30);
-      if (q) query = query.ilike("name", `%${q}%`);
+      if (q) query = query.or(`name.ilike.%${q}%,nationality.ilike.%${q}%`);
       const { data, error } = await query;
       if (error) throw error;
       return data ?? [];
@@ -392,7 +395,10 @@ function Market() {
                 className="border rounded-md p-2 text-sm hover:bg-muted/50"
               >
                 <div className="font-medium">{c.name}</div>
-                <div className="text-xs text-muted-foreground">{c.position} · OVR {c.overall} · {c.clubs?.name}</div>
+                <div className="text-xs text-muted-foreground">
+                  {c.position} · OVR {c.overall} · {c.clubs?.name}
+                  {c.nationality && <> · {nationalityFlag(c.nationality)} {c.nationality}</>}
+                </div>
                 <div className="text-xs text-muted-foreground">{formatMoney(c.market_value)}</div>
               </Link>
             ))}
@@ -415,7 +421,11 @@ function Market() {
                   <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="font-medium hover:underline">
                     {p.name}
                   </Link>
-                  <span className="text-xs text-muted-foreground"> · {p.position} · OVR {p.overall} · {p.age} anos</span>
+                  <span className="text-xs text-muted-foreground">
+                    {" "}
+                    · {p.position} · OVR {p.overall} · {p.age} anos
+                    {p.nationality && <> · {nationalityFlag(p.nationality)} {p.nationality}</>}
+                  </span>
                 </div>
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   Salário/quinzena
@@ -442,7 +452,7 @@ function Market() {
         <label className="text-sm flex items-center gap-2">
           Overall mínimo
           <input
-            type="range" min={50} max={90} value={minOvr}
+            type="range" min={0} max={99} value={minOvr}
             onChange={(e) => setMinOvr(Number(e.target.value))}
           />
           <span className="w-8 text-right">{minOvr}</span>
@@ -484,7 +494,7 @@ function Market() {
                 <tr key={p.id} className="border-b border-border/50 hover:bg-elevated/50">
                   <td className="px-3 py-2 font-medium">
                     <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="hover:underline">
-                      {p.name}
+                      {nationalityFlag(p.nationality)} {p.name}
                     </Link>
                   </td>
                   <td className="px-3 py-2 text-center">{p.position}</td>

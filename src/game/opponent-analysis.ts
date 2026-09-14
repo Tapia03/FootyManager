@@ -15,6 +15,7 @@ export interface OppPlayer {
   squad_number?: number | null;
   attributes?: Partial<PlayerAttributes> | null;
   scout_knowledge?: number | null;
+  nationality?: string | null;
 }
 export interface OppClub {
   name: string;

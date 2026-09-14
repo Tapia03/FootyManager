@@ -13,6 +13,7 @@ import { proposeLoanOut, recallLoan, exerciseLoanBuyOption } from "@/lib/loans";
 import { loanOutProgress } from "@/game/loan-status";
 import { marketTrendFromForm } from "@/game/valuation";
 import { suggestNumberUpgrades, type NumberUpgradeSuggestion } from "@/game/squad-numbers";
+import { nationalityFlag } from "@/lib/nationality-flag";
 import { PageHeader, SubTabs, Pill, RatingBadge, EmptyState, type Tone } from "@/components/fm";
 import { DressingRoomView } from "@/components/dressing-room-view";
 import { Users, Search, RefreshCw, ArrowDownUp, Shirt } from "lucide-react";
@@ -132,7 +133,10 @@ function Squad() {
   const filtered = useMemo(() => {
     let list = [...all];
     if (posFilter !== "ALL") list = list.filter((p) => p.position === posFilter);
-    if (filter) list = list.filter((p) => p.name.toLowerCase().includes(filter.toLowerCase()));
+    if (filter) {
+      const f = filter.toLowerCase();
+      list = list.filter((p) => p.name.toLowerCase().includes(f) || (p.nationality ?? "").toLowerCase().includes(f));
+    }
     list.sort((a: any, b: any) => {
       const av = a[sort]; const bv = b[sort];
       if (typeof av === "number") return bv - av;
@@ -291,6 +295,11 @@ function Squad() {
                           className="ml-1.5 inline size-3 text-info"
                           aria-label="emprestado"
                         />
+                      )}
+                      {p.nationality && (
+                        <div className="text-[11px] text-muted-foreground">
+                          {nationalityFlag(p.nationality)} {p.nationality}
+                        </div>
                       )}
                     </td>
                     <td className="px-3 py-2">

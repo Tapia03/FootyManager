@@ -311,8 +311,11 @@ export function buildClubsAndPlayers(csvDir) {
     if (!name) continue;
     const ratingVals = posRatingIdx.map((i) => pct(r[i]));
     const { base, natural } = mapPositionFromRatings(ratingVals, name);
-    const overall = Math.max(20, Math.min(95, Math.round(pct(r[pId("Melhor Classificação")]))));
-    const potential = Math.max(overall, Math.min(97, Math.round(pct(r[pId("Melhor Classificação Potencial")]))));
+    // Teto real do jogo é 99 (ver src/lib/advance-day.ts e src/game/youth.ts,
+    // que já clampam em 99) — antes vinha 95/97 aqui, artificialmente mais
+    // baixo que o resto do motor, sem necessidade.
+    const overall = Math.max(20, Math.min(99, Math.round(pct(r[pId("Melhor Classificação")]))));
+    const potential = Math.max(overall, Math.min(99, Math.round(pct(r[pId("Melhor Classificação Potencial")]))));
     const age = num(r[pId("Idade")]) || 24;
     const releaseClause = num(r[pId("Cláusula Mínima")]);
     const caps = num(r[pId("Internacionalizações")]);

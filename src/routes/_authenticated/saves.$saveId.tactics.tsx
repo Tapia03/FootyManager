@@ -23,6 +23,7 @@ import { slotCoords } from "@/game/formation-layout";
 import { checkAvailability } from "@/game/availability";
 import { clubColors, contrastText } from "@/game/club-colors";
 import { PageHeader, MeterBar, Pill, RatingBadge, ratingTone, TONE_TEXT } from "@/components/fm";
+import { nationalityFlag } from "@/lib/nationality-flag";
 import type { FormationCode, GranularPosition, Mentality, PassingStyle, TeamFluidity } from "@/game/types";
 import { positionLabel } from "@/game/types";
 import { Star, Target, X, ArrowLeftRight, SlidersHorizontal, Download, Upload } from "lucide-react";
@@ -941,7 +942,7 @@ function TacticsPage() {
                       {positionLabel(player.natural_position ?? player.position)}
                     </span>
                     <span className="min-w-0 flex-1 truncate font-medium">
-                      {player.squad_number ? `${player.squad_number} · ` : ""}{player.name}
+                      {player.squad_number ? `${player.squad_number} · ` : ""}{nationalityFlag(player.nationality)} {player.name}
                     </span>
                     <Stars n={stars} />
                     <RatingBadge value={player.overall} className="w-8 shrink-0" />

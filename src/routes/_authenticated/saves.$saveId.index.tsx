@@ -12,6 +12,7 @@ import { contractsAtRisk, CONTRACT_RISK_LABEL, type ContractRisk } from "@/game/
 import { positionLabel } from "@/game/types";
 import { effectiveKnowledge, tierFor, fuzzRange } from "@/game/scouting";
 import { HeroBanner, MetricCard, StatBar, EmptyState, Pill, RatingBadge } from "@/components/fm";
+import { nationalityFlag } from "@/lib/nationality-flag";
 import {
   LayoutDashboard, Trophy, Landmark, Users, Wallet, CalendarDays, Flame, ArrowRight, AlertTriangle,
 } from "lucide-react";
@@ -443,7 +444,7 @@ function Overview() {
                 <div className="flex flex-wrap gap-1.5">
                   {opponentReport.data.topPlayers.map((p: any) => (
                     <Pill key={p.name} tone="neutral">
-                      {p.name} <span className="opacity-60">· {p.position} {fuzzedOverall(p)}</span>
+                      {nationalityFlag(p.nationality)} {p.name} <span className="opacity-60">· {p.position} {fuzzedOverall(p)}</span>
                     </Pill>
                   ))}
                 </div>

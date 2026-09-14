@@ -18,6 +18,7 @@ import { familiarityFor } from "@/game/tactics";
 import { marketTrendFromForm } from "@/game/valuation";
 import { GRANULAR_POSITIONS, positionLabel } from "@/game/types";
 import { clubColors, contrastText } from "@/game/club-colors";
+import { nationalityFlag } from "@/lib/nationality-flag";
 import { RadarChart, Pill, ProsConsList, RatingBadge } from "@/components/fm";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -128,9 +129,11 @@ function PlayerDetail() {
   const squadForCompare = useQuery({
     queryKey: ["squad-compare", myClubId],
     enabled: !!myClubId,
-    queryFn: async () => (await supabase
-      .from("players").select("id, name, position, overall, age, attributes")
-      .eq("club_id", myClubId!).order("overall", { ascending: false })).data ?? [],
+    // as any[]: nationality ainda não está em types.ts (convenção do
+    // projeto até regenerar esse arquivo — ver CLAUDE.md).
+    queryFn: async () => ((await supabase
+      .from("players").select("id, name, position, overall, age, attributes, nationality")
+      .eq("club_id", myClubId!).order("overall", { ascending: false })).data ?? []) as any[],
   });
   const [compareId, setCompareId] = useState<string>("");
 
@@ -218,6 +221,12 @@ function PlayerDetail() {
                 <span>{p.age} anos</span>
                 <span>·</span>
                 <span>Pé {footLabel}</span>
+                {p.nationality && (
+                  <>
+                    <span>·</span>
+                    <span>{nationalityFlag(p.nationality)} {p.nationality}</span>
+                  </>
+                )}
                 {p.clubs?.name && !isMine && (<><span>·</span><span>{p.clubs.name}</span></>)}
               </div>
             </div>
@@ -293,7 +302,11 @@ function PlayerDetail() {
                   <option value="">—</option>
                   {(squadForCompare.data ?? [])
                     .filter((x) => x.id !== p.id)
-                    .map((x) => <option key={x.id} value={x.id}>{x.name} ({x.position} · {x.overall})</option>)}
+                    .map((x) => (
+                      <option key={x.id} value={x.id}>
+                        {nationalityFlag(x.nationality)} {x.name} ({x.position} · {x.overall})
+                      </option>
+                    ))}
                 </select>
               </label>
             )}
