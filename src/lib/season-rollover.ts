@@ -246,6 +246,17 @@ export async function checkAndRolloverSeason(saveId: string): Promise<RolloverRe
     await generateScheduleForSave(saveId, nextSeasonStart, comp.id);
   }
 
+  // Meta da diretoria pra NOVA temporada, gerada proativamente aqui em vez de
+  // esperar o usuário abrir a tela Diretoria pela 1ª vez (item 12 do backlog
+  // FootSim) — sem isso o painel inicial ficava sem a frase de meta logo
+  // depois da virada. Usa a competição ATUAL do clube (já reflete acesso/
+  // rebaixamento aplicado acima) e a temporada nova dela.
+  if (!fired && myClubId) {
+    const { data: myClubNow } = await supabase.from("clubs").select("competition_id").eq("id", myClubId).single();
+    const myComp = myClubNow?.competition_id ? leagueComps.find((c) => c.id === myClubNow.competition_id) : undefined;
+    if (myComp) await ensureSeasonObjective(saveId, myClubId, myComp.id, myComp.season + 1);
+  }
+
   const savePatch: any = { game_date: nextSeasonStart };
   if (fired) {
     savePatch.my_club_id = null;

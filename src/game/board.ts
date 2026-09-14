@@ -2,30 +2,74 @@
 // Diretoria e objetivos — lógica pura (sem I/O).
 //
 // No início de cada temporada, a diretoria define uma meta pro clube do
-// usuário com base na reputação (clube grande = objetivo ousado, clube
-// pequeno = só não cair). No fim da temporada, bater ou não a meta empurra
-// a confiança da diretoria pra cima ou pra baixo — confiança muito baixa é
-// sinal de que o técnico está com o emprego em risco.
+// usuário com base no RANK de reputação dele DENTRO da própria liga (não um
+// corte fixo de reputação absoluta — reputação 70 significa coisas bem
+// diferentes numa liga forte ou fraca). No fim da temporada, bater ou não a
+// meta empurra a confiança da diretoria pra cima ou pra baixo — confiança
+// muito baixa é sinal de que o técnico está com o emprego em risco.
+//
+// Item 12 do backlog FootSim: as faixas usam o vocabulário real do futebol
+// brasileiro (G-4/G-6/Z-4), igual o board do FM de verdade usa faixas de
+// posição (não corte de reputação) pra definir a meta.
 // -----------------------------------------------------------------------------
 
-export type ObjectiveKind = "win_league" | "top_n" | "avoid_relegation";
+export type ObjectiveKind =
+  | "win_league" | "top4" | "top6" | "top_half" | "mid_table" | "avoid_relegation" | "fight_relegation";
 
 export interface SeasonObjective {
   kind: ObjectiveKind;
-  target: number; // win_league/top_n: posição-alvo · avoid_relegation: limite antes do rebaixamento
+  target: number; // posição-alvo — final_position <= target bate a meta, pra TODAS as faixas
 }
 
 export function objectiveLabel(obj: SeasonObjective): string {
-  if (obj.kind === "win_league") return "Vencer o campeonato";
-  if (obj.kind === "top_n") return `Terminar entre os ${obj.target} primeiros`;
-  return `Terminar até a ${obj.target}ª posição (evitar o rebaixamento)`;
+  switch (obj.kind) {
+    case "win_league": return "Vencer o campeonato";
+    case "top4": return "Brigar pelo G-4";
+    case "top6": return "Brigar pelo G-6";
+    case "top_half": return "Terminar na primeira metade da tabela";
+    case "mid_table": return "Campanha de meio de tabela";
+    case "avoid_relegation": return "Fugir da zona de rebaixamento";
+    case "fight_relegation": return "Lutar contra o rebaixamento";
+    default: return `Terminar entre os ${obj.target} primeiros`; // compat com "top_n", o kind antigo (pré item 12) já gravado em saves existentes
+  }
 }
 
-export function generateObjective(clubReputation: number, leagueSize: number): SeasonObjective {
-  if (clubReputation >= 80) return { kind: "win_league", target: 1 };
-  if (clubReputation >= 65) return { kind: "top_n", target: Math.max(2, Math.round(leagueSize * 0.2)) };
-  if (clubReputation >= 45) return { kind: "top_n", target: Math.max(4, Math.round(leagueSize * 0.5)) };
-  return { kind: "avoid_relegation", target: Math.max(4, leagueSize - Math.max(2, Math.round(leagueSize * 0.15))) };
+/**
+ * @param reputationRank posição do clube (1 = maior reputação) dentro da
+ *   própria competição — não a reputação absoluta.
+ * @param relegationSlots tamanho real da zona de rebaixamento dessa
+ *   competição (0 quando é a divisão mais baixa da pirâmide — nesse caso
+ *   não existe pra onde cair, então as faixas de rebaixamento não fazem
+ *   sentido e a meta cai pra "campanha de meio de tabela").
+ * @param reputationGapToLeader diferença de reputação pro clube de MAIOR
+ *   reputação da liga (0 = é o próprio líder ou está empatado com ele).
+ *   Sem isso, só o clube exatamente em 1º lugar (ou, em ligas grandes, o
+ *   punhado dentro do top 8%) recebia "vencer o campeonato" — um clube
+ *   empatado ou a 1-2 pontos do líder (ex. 2º/3º lugar claramente
+ *   favorito, caso real achado com o Al-Hilal numa liga saudita onde 3
+ *   clubes têm reputação quase idêntica) caía pra "G-4" por causa só da
+ *   ordem de desempate, o que não faz sentido — na prática ele TAMBÉM é
+ *   favorito ao título.
+ */
+const ELITE_REPUTATION_MARGIN = 3;
+
+export function generateObjective(
+  reputationRank: number, leagueSize: number, relegationSlots: number, reputationGapToLeader = Infinity,
+): SeasonObjective {
+  const size = Math.max(1, leagueSize);
+  const pct = Math.max(1, reputationRank) / size;
+  const clampTarget = (n: number) => Math.max(1, Math.min(size, Math.round(n)));
+
+  const isElite = reputationRank === 1 || pct <= 0.08 || reputationGapToLeader <= ELITE_REPUTATION_MARGIN;
+  if (isElite) return { kind: "win_league", target: 1 };
+  if (pct <= 0.25) return { kind: "top4", target: clampTarget(Math.max(4, size * 0.20)) };
+  if (pct <= 0.40) return { kind: "top6", target: clampTarget(Math.max(6, size * 0.30)) };
+  if (pct <= 0.55) return { kind: "top_half", target: clampTarget(size * 0.50) };
+  if (relegationSlots <= 0 || pct <= 0.75) return { kind: "mid_table", target: clampTarget(size * 0.65) };
+
+  const survivalTarget = clampTarget(size - relegationSlots);
+  if (pct <= 0.90) return { kind: "avoid_relegation", target: survivalTarget };
+  return { kind: "fight_relegation", target: survivalTarget };
 }
 
 export function evaluateObjective(obj: SeasonObjective, finalPosition: number): "met" | "missed" {
@@ -34,16 +78,22 @@ export function evaluateObjective(obj: SeasonObjective, finalPosition: number): 
 
 /**
  * Quanto a confiança da diretoria muda no fim da temporada. Bater a meta com
- * folga rende bônus extra; ficar bem longe da meta dói mais que ficar por pouco.
+ * folga rende bônus extra; ficar bem longe da meta dói mais que ficar por
+ * pouco. "Lutar contra o rebaixamento" é a faixa mais fraca — sobreviver
+ * quando ninguém esperava vale um bônus extra, e cair (o resultado mais
+ * "esperado" pra esse clube) dói menos do que decepcionar numa faixa mais alta.
  */
 export function confidenceDelta(obj: SeasonObjective, finalPosition: number): number {
   const status = evaluateObjective(obj, finalPosition);
+  const underdog = obj.kind === "fight_relegation";
   if (status === "met") {
     const margin = Math.max(0, obj.target - finalPosition);
-    return Math.min(30, 15 + margin * 2);
+    const base = Math.min(30, 15 + margin * 2);
+    return underdog ? Math.round(base * 1.4) : base;
   }
   const shortfall = finalPosition - obj.target;
-  return -Math.min(35, 12 + shortfall * 2);
+  const base = -Math.min(35, 12 + shortfall * 2);
+  return underdog ? Math.round(base * 0.6) : base;
 }
 
 export const BOARD_CONFIDENCE_CRITICAL = 25;

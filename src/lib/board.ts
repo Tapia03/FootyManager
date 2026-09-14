@@ -3,11 +3,20 @@ import {
   evaluateBudgetRequest, generateObjective, evaluateBoardRequest,
   BOARD_REQUEST_CATALOG, type SeasonObjective, type BoardRequestKind,
 } from "@/game/board";
+import { promotionSlots } from "@/game/promotion";
 
 /**
  * Garante que existe um objetivo de temporada pro clube na competição/temporada
  * atual — gera na primeira vez que alguém consulta (mesmo padrão preguiçoso de
- * ensureCandidatePool em src/lib/staff.ts).
+ * ensureCandidatePool em src/lib/staff.ts) E proativamente logo após a virada
+ * de temporada (ver season-rollover.ts) pra o painel inicial nunca ficar sem
+ * a frase de meta esperando o usuário abrir a tela Diretoria pela 1ª vez.
+ *
+ * A meta usa o RANK de reputação do clube DENTRO da própria competição (não
+ * um corte de reputação absoluta) — por isso busca a reputação de todo mundo
+ * na competição, não só a do clube. O tamanho real da zona de rebaixamento
+ * vem de promotionSlots() (mesma regra usada de verdade no rollover); 0
+ * quando não existe divisão abaixo na pirâmide pra cair.
  */
 export async function ensureSeasonObjective(
   saveId: string, clubId: string, competitionId: string, season: number,
@@ -17,11 +26,26 @@ export async function ensureSeasonObjective(
     .eq("club_id", clubId).eq("competition_id", competitionId).eq("season", season).maybeSingle();
   if (existing) return;
 
-  const [{ data: club }, { count: leagueSize }] = await Promise.all([
-    supabase.from("clubs").select("reputation").eq("id", clubId).single(),
-    supabase.from("clubs").select("id", { count: "exact", head: true }).eq("competition_id", competitionId),
+  const [{ data: clubs }, { data: comp }] = await Promise.all([
+    supabase.from("clubs").select("id, reputation").eq("competition_id", competitionId).order("reputation", { ascending: false }),
+    supabase.from("competitions").select("tier, country").eq("id", competitionId).single(),
   ]);
-  const obj = generateObjective(club?.reputation ?? 50, leagueSize ?? 20);
+  const leagueSize = clubs?.length ?? 20;
+  const rankIdx = (clubs ?? []).findIndex((c) => c.id === clubId);
+  const reputationRank = rankIdx >= 0 ? rankIdx + 1 : Math.ceil(leagueSize / 2);
+  const topReputation = clubs?.[0]?.reputation ?? 0;
+  const myReputation = rankIdx >= 0 ? clubs![rankIdx].reputation : topReputation;
+  const reputationGapToLeader = Math.max(0, topReputation - (myReputation ?? topReputation));
+
+  let relegationSlots = 0;
+  if (comp?.country && comp?.tier != null) {
+    const { count: lowerTierCount } = await supabase.from("competitions")
+      .select("id", { count: "exact", head: true })
+      .eq("country", comp.country).eq("tier", comp.tier + 1);
+    if ((lowerTierCount ?? 0) > 0) relegationSlots = promotionSlots(leagueSize);
+  }
+
+  const obj = generateObjective(reputationRank, leagueSize, relegationSlots, reputationGapToLeader);
   const { error } = await supabase.from("season_objectives").insert({
     save_id: saveId, club_id: clubId, competition_id: competitionId, season,
     kind: obj.kind, target: obj.target,

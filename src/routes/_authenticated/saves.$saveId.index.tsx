@@ -228,11 +228,7 @@ function Overview() {
   const confTone = conf >= 70 ? "ok" : conf >= 40 ? "warn" : "danger";
 
   const obj = objective.data as SeasonObjective | null | undefined;
-  const objSentence = (() => {
-    if (!obj || myPos == null) return null;
-    const onTrack = myPos <= obj.target;
-    return `${objectiveLabel(obj)} — ${onTrack ? "dentro do alvo" : "abaixo do esperado"}.`;
-  })();
+  const objOnTrack = obj && myPos != null ? myPos <= obj.target : null;
 
   // forma recente do usuário (mais antigo → mais novo)
   const form = [...(recent.data ?? [])].reverse().map((m) => {
@@ -286,7 +282,19 @@ function Overview() {
         }
       >
         {myPos != null
-          ? <><strong className="text-foreground">{myPos}º lugar</strong> com {myRow?.points} {myRow?.points === 1 ? "ponto" : "pontos"} em {myRow?.played} {myRow?.played === 1 ? "jogo" : "jogos"}. {objSentence}</>
+          ? (
+            <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">
+              <strong className="text-foreground">{myPos}º lugar</strong>
+              <span>
+                com {myRow?.points} {myRow?.points === 1 ? "ponto" : "pontos"} em {myRow?.played} {myRow?.played === 1 ? "jogo" : "jogos"}.
+              </span>
+              {obj && (
+                <Pill tone={objOnTrack ? "ok" : "warn"} className="ml-0.5">
+                  {objectiveLabel(obj)} — {objOnTrack ? "dentro do alvo" : "abaixo do esperado"}
+                </Pill>
+              )}
+            </span>
+          )
           : "Temporada ainda não começou — monte a tática e avance os dias."}
       </HeroBanner>
 
@@ -389,7 +397,7 @@ function Overview() {
           saveId={saveId} to="/saves/$saveId/board"
           label="Confiança da diretoria" tone={confTone} icon={Landmark}
           value={`${conf}%`}
-          hint={conf >= 70 ? "Seguro no cargo" : conf >= 40 ? "Pressão moderada" : "Risco de demissão"}
+          hint={obj ? `Meta: ${objectiveLabel(obj)}` : (conf >= 70 ? "Seguro no cargo" : conf >= 40 ? "Pressão moderada" : "Risco de demissão")}
         />
         <MetricCardLink
           saveId={saveId} to="/saves/$saveId/squad"
