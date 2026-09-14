@@ -6,8 +6,12 @@
 // Isso existe pra nao depender de uma instalacao local do Postgres na
 // maquina de quem builda o instalador — ver project_desktop_windows_offline.md.
 //
-// Uso: node scripts/fetch-postgres-dlls.mjs
-import { mkdtempSync, createWriteStream, readdirSync, copyFileSync, rmSync } from "node:fs";
+// Idempotente: se libpq.dll ja existe em src-tauri/binaries/, so sai sem
+// baixar nada de novo (rodado automaticamente a cada build, ver
+// build-desktop.mjs). Usar --force pra baixar de novo mesmo assim.
+//
+// Uso: node scripts/fetch-postgres-dlls.mjs [--force]
+import { mkdtempSync, createWriteStream, readdirSync, copyFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +24,13 @@ const PG_BINARIES_URL = "https://sbp.enterprisedb.com/getfile.jsp?fileid=1260488
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const destDir = join(root, "src-tauri", "binaries");
+const force = process.argv.includes("--force");
+
+if (!force && existsSync(join(destDir, "libpq.dll"))) {
+  console.log("[fetch-postgres-dlls] libpq.dll ja existe em src-tauri/binaries/, pulando download (--force pra baixar de novo).");
+  process.exit(0);
+}
+
 const tmp = mkdtempSync(join(tmpdir(), "pg-binaries-"));
 const zipPath = join(tmp, "pg-binaries.zip");
 

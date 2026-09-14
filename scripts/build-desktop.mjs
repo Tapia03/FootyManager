@@ -9,6 +9,20 @@ import { dirname, resolve } from "node:path";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+// Garante que as DLLs do Postgres (dependencia do postgrest.exe) estao em
+// src-tauri/binaries/ antes do Tauri empacotar — idempotente, so baixa se
+// ainda nao existirem. Ver fetch-postgres-dlls.mjs e project_desktop_windows_offline.md.
+const dlls = spawnSync("node", ["scripts/fetch-postgres-dlls.mjs"], {
+  cwd: root,
+  stdio: "inherit",
+  shell: true,
+});
+
+if (dlls.status !== 0) {
+  console.error("[build-desktop] falha ao garantir as DLLs do Postgres, abortando build.");
+  process.exit(dlls.status ?? 1);
+}
+
 const result = spawnSync("npx", ["vite", "build"], {
   cwd: root,
   stdio: "inherit",
