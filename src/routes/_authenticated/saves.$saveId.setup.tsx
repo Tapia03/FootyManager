@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,14 @@ function SetupPage() {
   const qc = useQueryClient();
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState<{ step: string; current: number; total: number } | null>(null);
+  // Guard síncrono (não é state — não depende de re-render pra valer) contra
+  // clique duplo. `disabled={importing}` sozinho não bastava: handleUseDefault
+  // (e os outros dois chamadores) fazem um await ANTES de runImport chamar
+  // setImporting(true) — nessa janela o botão ainda não tinha desabilitado, e
+  // um segundo clique rápido disparava a importação inteira de novo
+  // (competição/clube/jogador todos duplicados no banco). Achado ao vivo:
+  // toda competição de um save vinha em par, mesmo código, duas linhas.
+  const importBusyRef = useRef(false);
 
   const save = useQuery({
     queryKey: ["save", saveId],
@@ -91,6 +99,11 @@ function SetupPage() {
   });
 
   async function runImport(seed: Seed) {
+    // Checagem+trava síncrona — ver comentário do importBusyRef acima.
+    // Bloqueia tanto um segundo clique real quanto uma segunda chamada
+    // concorrente vinda de handleFile/handleUseLibrary/handleUseDefault.
+    if (importBusyRef.current) return;
+    importBusyRef.current = true;
     setImporting(true);
     try {
       if (!seed.clubs || !Array.isArray(seed.clubs)) throw new Error("seed.json inválido: falta 'clubs'.");
@@ -106,6 +119,7 @@ function SetupPage() {
     } catch (e: any) {
       toast.error(e.message ?? "Falha na importação");
     } finally {
+      importBusyRef.current = false;
       setImporting(false);
       setProgress(null);
     }
