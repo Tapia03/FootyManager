@@ -20,6 +20,7 @@ import { applyPressMoraleDelta } from "@/lib/press";
 import type { MatchResult, MatchLineupEntry, Mentality, FormationCode } from "@/game/types";
 import { formationSlots } from "@/game/tactics";
 import { checkAvailability } from "@/game/availability";
+import { ClubCrest } from "@/components/club-crest";
 import { liveMatchStats, shotMapEntries, xgMomentum, coachingAnalysis } from "@/game/live-stats";
 import { SHOUTS, resolveShout, type ShoutId } from "@/game/shouts";
 import { TEAM_TALKS, resolveTeamTalk, type TeamTalkId } from "@/game/team-talk";
@@ -500,9 +501,13 @@ function SaveLayout() {
         <header className="border-b border-border bg-card sticky top-0 z-10">
           <div className="px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <div className="size-9 rounded-md bg-secondary flex items-center justify-center text-xs font-bold shrink-0">
-                {initials}
-              </div>
+              {club.data ? (
+                <ClubCrest club={club.data} className="size-9 rounded-md shrink-0" />
+              ) : (
+                <div className="size-9 rounded-md bg-secondary flex items-center justify-center text-xs font-bold shrink-0">
+                  {initials}
+                </div>
+              )}
               <div>
                 <Link to="/saves/$saveId/clubs/$clubId" params={{ saveId, clubId: save.data.my_club_id! }} className="font-semibold leading-tight hover:text-primary hover:underline">
                   {club.data?.name}

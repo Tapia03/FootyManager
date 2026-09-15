@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
+import { ClubCrest } from "@/components/club-crest";
 import { computeStandings } from "@/game/standings";
 import { promotionSlots } from "@/game/promotion";
 import { PageHeader, SubViewDropdown } from "@/components/fm";
@@ -51,7 +52,7 @@ function Standings() {
     enabled: !!compId && season != null,
     queryFn: async () => {
       const [{ data: clubs }, { data: matches }] = await Promise.all([
-        supabase.from("clubs").select("id, name").eq("competition_id", compId!),
+        supabase.from("clubs").select("id, name, crest_url, primary_color, secondary_color").eq("competition_id", compId!),
         supabase.from("matches").select("home_club_id, away_club_id, home_score, away_score, played").eq("competition_id", compId!).eq("season", season),
       ]);
       return computeStandings(clubs ?? [], matches ?? []);
@@ -134,8 +135,8 @@ function Standings() {
               <tr key={r.club_id} className={`border-b border-border/50 ${r.club_id === clubId ? "bg-primary/10 font-semibold" : "hover:bg-elevated/50"}`}>
                 <td className={`px-3 py-1.5 text-muted-foreground border-l-2 ${zone === "promo" ? "border-ok" : zone === "rele" ? "border-danger" : "border-transparent"}`}>{pos}</td>
                 <td className="px-3 py-1.5 text-left">
-                  <Link to="/saves/$saveId/clubs/$clubId" params={{ saveId, clubId: r.club_id }} className="hover:text-primary hover:underline">
-                    {r.name}
+                  <Link to="/saves/$saveId/clubs/$clubId" params={{ saveId, clubId: r.club_id }} className="hover:text-primary hover:underline inline-flex items-center gap-1.5">
+                    <ClubCrest club={{ id: r.club_id, ...r }} className="w-4 h-4" /> {r.name}
                   </Link>
                 </td>
                 <td className="px-2 py-1.5 text-center font-semibold">{r.points}</td>

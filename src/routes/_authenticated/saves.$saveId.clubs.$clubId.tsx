@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { formatMoney, formatDate } from "@/lib/game-hooks";
 import { computeStandings } from "@/game/standings";
 import { isRivalry } from "@/game/rivalries";
-import { clubColors, contrastText } from "@/game/club-colors";
+import { ClubCrest } from "@/components/club-crest";
 import { effectiveKnowledge, tierFor, fuzzRange } from "@/game/scouting";
 import { positionLabel } from "@/game/types";
 import { PageHeader, Pill, RatingBadge, EmptyState, ratingTone } from "@/components/fm";
@@ -145,9 +145,6 @@ function ClubPage() {
   if (club.isError) return <div className="text-muted-foreground">Não foi possível carregar este clube agora.</div>;
   if (!c) return <div>Clube não encontrado.</div>;
 
-  const kit = clubColors(c);
-  const kitText = contrastText(kit.primary);
-  const initials = String(c.name).split(" ").map((w: string) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
   const reputationStars = Math.max(1, Math.min(5, Math.round((c.reputation ?? 50) / 20)));
 
   function fuzzedOverall(p: { overall: number; scout_knowledge?: number | null; id: string }) {
@@ -163,12 +160,7 @@ function ClubPage() {
       <Card className="p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3.5">
-            <div
-              className="grid size-14 shrink-0 place-items-center rounded-2xl border-2 border-white/15 font-display text-lg font-bold shadow-sm"
-              style={{ backgroundColor: kit.primary, color: kitText }}
-            >
-              {initials}
-            </div>
+            <ClubCrest club={c} className="size-14 shrink-0 rounded-2xl border-2 border-white/15 shadow-sm" />
             <div>
               <h2 className="font-display text-2xl font-bold tracking-tight">{c.name}</h2>
               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">

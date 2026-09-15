@@ -2,6 +2,7 @@ import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
+import { ClubCrest } from "@/components/club-crest";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatMoney } from "@/lib/game-hooks";
@@ -69,7 +70,7 @@ function Market() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("players")
-        .select("id, name, position, overall, market_value, nationality, clubs!players_club_id_fkey(name)")
+        .select("id, name, position, overall, market_value, nationality, clubs!players_club_id_fkey(id, name, primary_color, secondary_color, crest_url)")
         .eq("save_id", saveId).neq("club_id", myClubId!)
         .order("overall", { ascending: false }).limit(80);
       if (error) throw error;
@@ -89,7 +90,7 @@ function Market() {
     queryFn: async () => {
       let query = supabase
         .from("players")
-        .select("id, name, age, position, overall, market_value, wage, club_id, scout_knowledge, nationality, clubs!players_club_id_fkey(name, short_name, reputation)")
+        .select("id, name, age, position, overall, market_value, wage, club_id, scout_knowledge, nationality, clubs!players_club_id_fkey(id, name, short_name, reputation, primary_color, secondary_color, crest_url)")
         .eq("save_id", saveId)
         .neq("club_id", myClubId!)
         // Agente livre (club_id null) tem seção própria mais abaixo — sem
@@ -396,7 +397,7 @@ function Market() {
               >
                 <div className="font-medium">{c.name}</div>
                 <div className="text-xs text-muted-foreground">
-                  {c.position} · OVR {c.overall} · {c.clubs?.name}
+                  {c.position} · OVR {c.overall} · {c.clubs && <ClubCrest club={c.clubs} className="w-3.5 h-3.5" />} {c.clubs?.name}
                   {c.nationality && <> · <NationalityFlag nationality={c.nationality} /> {c.nationality}</>}
                 </div>
                 <div className="text-xs text-muted-foreground">{formatMoney(c.market_value)}</div>
@@ -502,8 +503,8 @@ function Market() {
                   <td className="px-3 py-2 text-center font-semibold">{ovrLo === ovrHi ? ovrLo : `${ovrLo}-${ovrHi}`}</td>
                   <td className="px-3 py-2">
                     {p.club_id ? (
-                      <Link to="/saves/$saveId/clubs/$clubId" params={{ saveId, clubId: p.club_id }} className="hover:text-primary hover:underline">
-                        {p.clubs?.name}
+                      <Link to="/saves/$saveId/clubs/$clubId" params={{ saveId, clubId: p.club_id }} className="hover:text-primary hover:underline inline-flex items-center gap-1.5">
+                        {p.clubs && <ClubCrest club={p.clubs} className="w-4 h-4" />} {p.clubs?.name}
                       </Link>
                     ) : p.clubs?.name}
                   </td>

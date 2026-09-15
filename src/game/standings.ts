@@ -1,6 +1,9 @@
 export interface StandingRow {
   club_id: string;
   name: string;
+  crest_url?: string | null;
+  primary_color?: string | null;
+  secondary_color?: string | null;
   played: number;
   wins: number;
   draws: number;
@@ -22,6 +25,9 @@ interface MatchLite {
 interface ClubLite {
   id: string;
   name: string;
+  crest_url?: string | null;
+  primary_color?: string | null;
+  secondary_color?: string | null;
 }
 
 export function computeStandings(clubs: ClubLite[], matches: MatchLite[]): StandingRow[] {
@@ -30,6 +36,9 @@ export function computeStandings(clubs: ClubLite[], matches: MatchLite[]): Stand
     table.set(c.id, {
       club_id: c.id,
       name: c.name,
+      crest_url: c.crest_url,
+      primary_color: c.primary_color,
+      secondary_color: c.secondary_color,
       played: 0, wins: 0, draws: 0, losses: 0, gf: 0, ga: 0, gd: 0, points: 0,
     });
   }
