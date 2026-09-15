@@ -1,16 +1,23 @@
-// Servidor de banco local (Fase 3 do app desktop). Sobe um PGlite persistente
-// e expõe ele como um Postgres de verdade via socket TCP, pra o PostgREST
-// (rodando como outro processo) conseguir se conectar nele igual conectaria
-// num Postgres na nuvem. Isso é o que permite os 41 arquivos que chamam
-// supabase.from() continuarem exatamente iguais — só a URL muda.
+// Servidor de banco local (Fase 3 do app desktop, motor trocado em
+// 2026-09-14). Sobe um Postgres NATIVO de verdade (não mais PGlite/WASM —
+// ver project_desktop_windows_offline.md pra história completa da troca:
+// PGlite vinha travando sob carga, e testado que os arquivos em disco do
+// PGlite não são binário-compatíveis com um Postgres nativo, então a
+// migração de dado existente é feita à parte por
+// scripts/migrate-pglite-to-native.mjs, não por este arquivo).
+//
+// Mesmo contrato de sempre por fora — CLI, ordem de log, linha
+// "LOCAL_DB_READY" — pra não precisar mexer em src-tauri/src/lib.rs nem em
+// scripts/dev-backend.mjs, que já sobem isso via `node <este arquivo>
+// --data-dir X --port Y` e esperam essa linha aparecer no stdout antes de
+// subir o PostgREST.
 //
 // Uso: node scripts/local-db-server.mjs [--data-dir <caminho>] [--port <numero>]
-// Ver project_desktop_windows_offline.md na memória do projeto.
-import { PGlite } from "@electric-sql/pglite";
-import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
+import { spawn, execFileSync } from "node:child_process";
+import { connect } from "node:net";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(scriptDir, "..");
@@ -22,6 +29,14 @@ function argValue(name, fallback) {
 
 const dataDir = resolve(argValue("--data-dir", join(root, ".local-db-data")));
 const port = Number(argValue("--port", "54329"));
+
+// Empacotado: server/local-db-server.mjs (bundle.resources "binaries/server/"
+// em tauri.conf.json), binários em ../pgsql/bin (bundle.resources
+// "binaries/pgsql/" — irmão de server/, mesmo padrão da pasta migrations/
+// já usada abaixo). Dev: src-tauri/binaries/pgsql/bin diretamente.
+const packagedPgBin = join(scriptDir, "..", "pgsql", "bin");
+const pgBinDir = existsSync(packagedPgBin) ? packagedPgBin : join(root, "src-tauri", "binaries", "pgsql", "bin");
+const exe = (name) => join(pgBinDir, `${name}.exe`);
 
 const AUTH_SHIM = `
 CREATE SCHEMA IF NOT EXISTS auth;
@@ -52,63 +67,92 @@ const DESKTOP_PATCH = `
 ALTER TABLE public.saves ALTER COLUMN user_id SET DEFAULT '00000000-0000-0000-0000-000000000001'::uuid;
 `;
 
-async function ensureSchema(db) {
-  const existing = await db.query(
-    `SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'saves'`,
-  );
-  if (existing.rows.length > 0) {
+function psqlExec(sql) {
+  execFileSync(exe("psql"), ["-h", "127.0.0.1", "-p", String(port), "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", sql], { stdio: "inherit" });
+}
+function psqlFile(path) {
+  execFileSync(exe("psql"), ["-h", "127.0.0.1", "-p", String(port), "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-f", path], { stdio: "inherit" });
+}
+
+async function waitReady(timeoutMs = 20000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const ok = await new Promise((resolve) => {
+      const sock = connect({ host: "127.0.0.1", port }, () => { sock.end(); resolve(true); });
+      sock.on("error", () => resolve(false));
+    });
+    if (ok) return;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(`postgres nao ficou pronto em ${timeoutMs}ms (porta ${port})`);
+}
+
+async function ensureSchema() {
+  // -t -A: saida "tuples only, unaligned" -> só o valor cru ("t"/"f"), sem
+  // cabeçalho nem formatação de tabela.
+  const out = execFileSync(exe("psql"), [
+    "-h", "127.0.0.1", "-p", String(port), "-U", "postgres", "-d", "postgres", "-t", "-A", "-c",
+    "SELECT to_regclass('public.saves') IS NOT NULL",
+  ]).toString().trim();
+  if (out === "t") {
     console.log("[local-db] schema ja existe, pulando migrations");
     return;
   }
   console.log("[local-db] primeira execucao: aplicando shim + migrations...");
-  await db.exec(AUTH_SHIM);
+  psqlExec(AUTH_SHIM);
   // Em dev, o script mora em scripts/ e as migrations ficam em ../supabase/migrations.
   // Empacotado (bundle rodando via node.exe sidecar), o script mora em
   // server/local-db-server.mjs e o build-server-sidecar.mjs copia as
   // migrations pra server/migrations/ (irma do bundle, mesma pasta).
   const packagedMigrations = join(scriptDir, "migrations");
-  const migrationsDir = existsSync(packagedMigrations)
-    ? packagedMigrations
-    : join(root, "supabase", "migrations");
-  const files = readdirSync(migrationsDir)
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
-  for (const file of files) {
-    const sql = readFileSync(join(migrationsDir, file), "utf8");
-    await db.exec(sql);
-  }
+  const migrationsDir = existsSync(packagedMigrations) ? packagedMigrations : join(root, "supabase", "migrations");
+  const files = readdirSync(migrationsDir).filter((f) => f.endsWith(".sql")).sort();
+  for (const file of files) psqlFile(join(migrationsDir, file));
   console.log(`[local-db] ${files.length} migrations aplicadas`);
   console.log("[local-db] aplicando patch desktop (sem login: user_id ganha default)...");
-  await db.exec(DESKTOP_PATCH);
+  psqlExec(DESKTOP_PATCH);
+}
+
+let pgChild = null;
+
+async function shutdown() {
+  console.log("[local-db] encerrando...");
+  try {
+    execFileSync(exe("pg_ctl"), ["-D", dataDir, "stop", "-m", "fast"], { stdio: "inherit", timeout: 10000 });
+  } catch (e) {
+    console.warn("[local-db] pg_ctl stop falhou, forcando kill:", e.message);
+    pgChild?.kill();
+  }
+  process.exit(0);
 }
 
 async function main() {
   console.log(`[local-db] abrindo banco em ${dataDir}`);
-  const db = new PGlite(dataDir);
-  await ensureSchema(db);
+  if (!existsSync(join(dataDir, "PG_VERSION"))) {
+    console.log("[local-db] data-dir novo, rodando initdb...");
+    execFileSync(exe("initdb"), ["-D", dataDir, "-U", "postgres", "--auth=trust", "-E", "UTF8"], { stdio: "inherit" });
+  }
 
-  const server = new PGLiteSocketServer({
-    db,
-    port,
-    host: "127.0.0.1",
-    maxConnections: 10,
-    debug: process.env.LOCAL_DB_DEBUG === "1",
+  pgChild = spawn(exe("postgres"), ["-D", dataDir, "-p", String(port), "-h", "127.0.0.1"], { stdio: "inherit" });
+  pgChild.on("exit", (code) => {
+    if (code !== 0 && code !== null) {
+      console.error(`[local-db] postgres.exe saiu com codigo ${code}`);
+      process.exit(1);
+    }
   });
-  await server.start();
-  console.log(`[local-db] socket Postgres ouvindo em 127.0.0.1:${port}`);
+
+  await waitReady();
+  console.log(`[local-db] postgres nativo ouvindo em 127.0.0.1:${port}`);
+
+  await ensureSchema();
+
   // Marcador que o processo pai (Tauri / script de teste) usa pra saber
   // que ja pode conectar o PostgREST.
   console.log("LOCAL_DB_READY");
-
-  const shutdown = async () => {
-    console.log("[local-db] encerrando...");
-    await server.stop();
-    await db.close();
-    process.exit(0);
-  };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
 }
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 
 main().catch((err) => {
   console.error("[local-db] erro fatal:", err);

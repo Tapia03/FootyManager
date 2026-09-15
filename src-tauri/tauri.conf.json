@@ -38,7 +38,8 @@
     "externalBin": ["binaries/postgrest", "binaries/node"],
     "resources": {
       "binaries/*.dll": "",
-      "binaries/server/": "server/"
+      "binaries/server/": "server/",
+      "binaries/pgsql/": "pgsql/"
     },
     "android": {
       "debugApplicationIdSuffix": ".debug"
