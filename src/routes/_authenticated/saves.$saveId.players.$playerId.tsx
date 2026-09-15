@@ -18,7 +18,7 @@ import { familiarityFor } from "@/game/tactics";
 import { marketTrendFromForm } from "@/game/valuation";
 import { GRANULAR_POSITIONS, positionLabel } from "@/game/types";
 import { clubColors, contrastText } from "@/game/club-colors";
-import { nationalityFlag } from "@/lib/nationality-flag";
+import { NationalityFlag } from "@/components/nationality-flag";
 import { RadarChart, Pill, ProsConsList, RatingBadge } from "@/components/fm";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -224,7 +224,7 @@ function PlayerDetail() {
                 {p.nationality && (
                   <>
                     <span>·</span>
-                    <span>{nationalityFlag(p.nationality)} {p.nationality}</span>
+                    <span><NationalityFlag nationality={p.nationality} /> {p.nationality}</span>
                   </>
                 )}
                 {p.clubs?.name && !isMine && (<><span>·</span><span>{p.clubs.name}</span></>)}
@@ -304,7 +304,7 @@ function PlayerDetail() {
                     .filter((x) => x.id !== p.id)
                     .map((x) => (
                       <option key={x.id} value={x.id}>
-                        {nationalityFlag(x.nationality)} {x.name} ({x.position} · {x.overall})
+                        {x.name} ({x.position} · {x.overall})
                       </option>
                     ))}
                 </select>

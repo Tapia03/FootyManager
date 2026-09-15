@@ -9,7 +9,7 @@ import { clubColors, contrastText } from "@/game/club-colors";
 import { playerScoutingNotes, type PlayerAttributes } from "@/game/attributes";
 import { effectiveKnowledge, tierFor, fuzzRange } from "@/game/scouting";
 import { PageHeader, SubTabs, Pill, StatBar, RatingBadge, ProsConsList, EmptyState, ratingTone } from "@/components/fm";
-import { nationalityFlag } from "@/lib/nationality-flag";
+import { NationalityFlag } from "@/components/nationality-flag";
 import { BarChart3, Target, Zap, AlertTriangle, Compass, CalendarDays } from "lucide-react";
 import { useState } from "react";
 
@@ -223,7 +223,7 @@ function AnalysisPage() {
                         params={{ saveId, playerId: dossier.dangerMan.id }}
                         className="font-display font-semibold hover:text-primary hover:underline"
                       >
-                        {nationalityFlag(dossier.dangerMan.nationality)} {dossier.dangerMan.name}
+                        <NationalityFlag nationality={dossier.dangerMan.nationality} /> {dossier.dangerMan.name}
                       </Link>
                       <div className="flex items-center gap-1.5 text-xs text-danger">
                         <span>{dossier.dangerMan.natural_position ?? dossier.dangerMan.position} · Overall</span>
@@ -250,7 +250,7 @@ function AnalysisPage() {
                       <div key={p.id} className="flex items-center justify-between text-xs">
                         <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="truncate hover:text-primary hover:underline">
                           {p.squad_number != null && <span className="mr-1 font-mono text-muted-foreground">{p.squad_number}</span>}
-                          {nationalityFlag(p.nationality)} {p.name}
+                          <NationalityFlag nationality={p.nationality} /> {p.name}
                         </Link>
                         <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
                           {p.natural_position ?? p.position}

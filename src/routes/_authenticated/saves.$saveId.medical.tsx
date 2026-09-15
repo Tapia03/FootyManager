@@ -6,7 +6,7 @@ import { injuryTypeLabel } from "@/game/medical";
 import type { InjuryHistoryEntry } from "@/game/medical";
 import { positionLabel } from "@/game/types";
 import { PageHeader } from "@/components/fm";
-import { nationalityFlag } from "@/lib/nationality-flag";
+import { NationalityFlag } from "@/components/nationality-flag";
 import { HeartPulse } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/saves/$saveId/medical")({
@@ -75,7 +75,7 @@ function MedicalPage() {
                 <div key={p.id} className="flex items-center justify-between text-sm border-t border-border/50 pt-2 first:border-t-0 first:pt-0">
                   <div>
                     <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="font-medium hover:underline">
-                      {nationalityFlag(p.nationality)} {p.name}
+                      <NationalityFlag nationality={p.nationality} /> {p.name}
                     </Link>
                     <span className="text-muted-foreground"> · {positionLabel(p.natural_position ?? p.position)}</span>
                   </div>
@@ -102,7 +102,7 @@ function MedicalPage() {
               <div key={p.id} className="flex items-center justify-between text-sm border-t border-border/50 pt-2 first:border-t-0 first:pt-0">
                 <div>
                   <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="font-medium hover:underline">
-                    {nationalityFlag(p.nationality)} {p.name}
+                    <NationalityFlag nationality={p.nationality} /> {p.name}
                   </Link>
                   <span className="text-muted-foreground"> · {positionLabel(p.natural_position ?? p.position)}</span>
                 </div>
@@ -124,7 +124,7 @@ function MedicalPage() {
               <div key={p.id} className="flex items-center justify-between text-sm border-t border-border/50 pt-2 first:border-t-0 first:pt-0">
                 <div>
                   <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="font-medium hover:underline">
-                    {nationalityFlag(p.nationality)} {p.name}
+                    <NationalityFlag nationality={p.nationality} /> {p.name}
                   </Link>
                   <span className="text-muted-foreground"> · {positionLabel(p.natural_position ?? p.position)}</span>
                 </div>
@@ -145,7 +145,7 @@ function MedicalPage() {
               <div key={p.id} className="flex items-center justify-between text-sm border-t border-border/50 pt-2 first:border-t-0 first:pt-0">
                 <div>
                   <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="font-medium hover:underline">
-                    {nationalityFlag(p.nationality)} {p.name}
+                    <NationalityFlag nationality={p.nationality} /> {p.name}
                   </Link>
                   <span className="text-muted-foreground"> · {positionLabel(p.natural_position ?? p.position)}</span>
                 </div>

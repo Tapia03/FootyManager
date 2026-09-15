@@ -13,7 +13,7 @@ import { proposeLoanOut, recallLoan, exerciseLoanBuyOption } from "@/lib/loans";
 import { loanOutProgress } from "@/game/loan-status";
 import { marketTrendFromForm } from "@/game/valuation";
 import { suggestNumberUpgrades, type NumberUpgradeSuggestion } from "@/game/squad-numbers";
-import { nationalityFlag } from "@/lib/nationality-flag";
+import { NationalityFlag } from "@/components/nationality-flag";
 import { PageHeader, SubTabs, Pill, RatingBadge, EmptyState, type Tone } from "@/components/fm";
 import { DressingRoomView } from "@/components/dressing-room-view";
 import { Users, Search, RefreshCw, ArrowDownUp, Shirt } from "lucide-react";
@@ -298,7 +298,7 @@ function Squad() {
                       )}
                       {p.nationality && (
                         <div className="text-[11px] text-muted-foreground">
-                          {nationalityFlag(p.nationality)} {p.nationality}
+                          <NationalityFlag nationality={p.nationality} /> {p.nationality}
                         </div>
                       )}
                     </td>

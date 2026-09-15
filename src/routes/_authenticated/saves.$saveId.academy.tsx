@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { positionLabel } from "@/game/types";
 import { PageHeader, EmptyState } from "@/components/fm";
-import { nationalityFlag } from "@/lib/nationality-flag";
+import { NationalityFlag } from "@/components/nationality-flag";
 import { GraduationCap } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/saves/$saveId/academy")({
@@ -80,7 +80,7 @@ function AcademyPage() {
                   <tr key={p.id} className="border-b border-border/50 hover:bg-elevated/50">
                     <td className="px-3 py-2 font-medium">
                       <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="hover:text-primary hover:underline">
-                        {nationalityFlag(p.nationality)} {p.name}
+                        <NationalityFlag nationality={p.nationality} /> {p.name}
                       </Link>
                     </td>
                     <td className="px-3 py-2 text-center text-muted-foreground">{positionLabel(p.natural_position ?? p.position)}</td>

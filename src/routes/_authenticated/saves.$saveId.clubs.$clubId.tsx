@@ -9,7 +9,7 @@ import { clubColors, contrastText } from "@/game/club-colors";
 import { effectiveKnowledge, tierFor, fuzzRange } from "@/game/scouting";
 import { positionLabel } from "@/game/types";
 import { PageHeader, Pill, RatingBadge, EmptyState, ratingTone } from "@/components/fm";
-import { nationalityFlag } from "@/lib/nationality-flag";
+import { NationalityFlag } from "@/components/nationality-flag";
 import { Shield, Users, Trophy, Landmark, Wallet, Flame } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/saves/$saveId/clubs/$clubId")({
@@ -258,7 +258,7 @@ function ClubPage() {
             return (
               <div key={p.id} className="flex items-center justify-between gap-2 py-1.5 text-sm">
                 <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="min-w-0 flex-1 truncate hover:text-primary hover:underline">
-                  {nationalityFlag(p.nationality)} {p.name}
+                  <NationalityFlag nationality={p.nationality} /> {p.name}
                 </Link>
                 <span className="w-12 shrink-0 text-center text-xs text-muted-foreground">{positionLabel(p.natural_position ?? p.position)}</span>
                 <RatingBadge value={ovr.display} tone={ovr.tone} className="w-14" />

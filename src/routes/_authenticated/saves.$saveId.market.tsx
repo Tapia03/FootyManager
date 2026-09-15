@@ -12,7 +12,7 @@ import { initialBidFee, loanReferenceValue } from "@/game/transfer-negotiation";
 import { isTransferWindowOpen, currentWindowLabel, daysUntilNextWindow } from "@/game/transfer-window";
 import { dismissTransferRequest, listTransferRequest } from "@/lib/transfer-requests";
 import { recommendSignings } from "@/game/scout-recommendations";
-import { nationalityFlag } from "@/lib/nationality-flag";
+import { NationalityFlag } from "@/components/nationality-flag";
 import { PageHeader, EmptyState } from "@/components/fm";
 import { ArrowLeftRight, Search, AlertTriangle, UserPlus, CheckCircle2 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -397,7 +397,7 @@ function Market() {
                 <div className="font-medium">{c.name}</div>
                 <div className="text-xs text-muted-foreground">
                   {c.position} · OVR {c.overall} · {c.clubs?.name}
-                  {c.nationality && <> · {nationalityFlag(c.nationality)} {c.nationality}</>}
+                  {c.nationality && <> · <NationalityFlag nationality={c.nationality} /> {c.nationality}</>}
                 </div>
                 <div className="text-xs text-muted-foreground">{formatMoney(c.market_value)}</div>
               </Link>
@@ -424,7 +424,7 @@ function Market() {
                   <span className="text-xs text-muted-foreground">
                     {" "}
                     · {p.position} · OVR {p.overall} · {p.age} anos
-                    {p.nationality && <> · {nationalityFlag(p.nationality)} {p.nationality}</>}
+                    {p.nationality && <> · <NationalityFlag nationality={p.nationality} /> {p.nationality}</>}
                   </span>
                 </div>
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -494,7 +494,7 @@ function Market() {
                 <tr key={p.id} className="border-b border-border/50 hover:bg-elevated/50">
                   <td className="px-3 py-2 font-medium">
                     <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="hover:underline">
-                      {nationalityFlag(p.nationality)} {p.name}
+                      <NationalityFlag nationality={p.nationality} /> {p.name}
                     </Link>
                   </td>
                   <td className="px-3 py-2 text-center">{p.position}</td>

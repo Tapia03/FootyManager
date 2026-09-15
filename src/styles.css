@@ -1,6 +1,10 @@
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
+/* Bandeiras reais em SVG (não emoji) — WebView2/Windows não renderiza
+   confiavelmente indicador regional de bandeira (confirmado no navegador
+   E no app desktop empacotado), flag-icons (MIT) resolve isso de vez. */
+@import "flag-icons/css/flag-icons.min.css";
 
 @custom-variant dark (&:is(.dark *));
 

@@ -57,6 +57,33 @@ async function waitReady(timeoutMs = 2e4) {
   }
   throw new Error(`postgres nao ficou pronto em ${timeoutMs}ms (porta ${port})`);
 }
+async function waitQueryable(timeoutMs = 6e4) {
+  const start = Date.now();
+  let lastErr;
+  while (Date.now() - start < timeoutMs) {
+    try {
+      execFileSync(exe("psql"), [
+        "-h",
+        "127.0.0.1",
+        "-p",
+        String(port),
+        "-U",
+        "postgres",
+        "-d",
+        "postgres",
+        "-t",
+        "-A",
+        "-c",
+        "SELECT 1"
+      ], { stdio: ["ignore", "ignore", "pipe"] });
+      return;
+    } catch (e) {
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+  throw new Error(`postgres nao aceitou queries em ${timeoutMs}ms: ${lastErr?.message}`);
+}
 async function ensureSchema() {
   const out = execFileSync(exe("psql"), [
     "-h",
@@ -112,6 +139,8 @@ async function main() {
   });
   await waitReady();
   console.log(`[local-db] postgres nativo ouvindo em 127.0.0.1:${port}`);
+  await waitQueryable();
+  console.log("[local-db] postgres pronto pra queries (replay do WAL concluido, se havia)");
   await ensureSchema();
   console.log("LOCAL_DB_READY");
 }
