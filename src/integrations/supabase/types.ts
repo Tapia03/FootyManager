@@ -25,7 +25,7 @@ export type Database = {
           crest_url: string | null
           defensive_line: number
           division: number
-          formation: Database["public"]["Enums"]["formation"]
+          formation: string
           free_kick_taker_id: string | null
           id: string
           penalty_taker_id: string | null
@@ -57,7 +57,7 @@ export type Database = {
           crest_url?: string | null
           defensive_line?: number
           division?: number
-          formation?: Database["public"]["Enums"]["formation"]
+          formation?: string
           free_kick_taker_id?: string | null
           id?: string
           penalty_taker_id?: string | null
@@ -89,7 +89,7 @@ export type Database = {
           crest_url?: string | null
           defensive_line?: number
           division?: number
-          formation?: Database["public"]["Enums"]["formation"]
+          formation?: string
           free_kick_taker_id?: string | null
           id?: string
           penalty_taker_id?: string | null
@@ -652,6 +652,8 @@ export type Database = {
           id: string
           is_starter: boolean
           player_id: string
+          pos_x: number | null
+          pos_y: number | null
           role: string | null
           save_id: string
           slot: string
@@ -663,6 +665,8 @@ export type Database = {
           id?: string
           is_starter?: boolean
           player_id: string
+          pos_x?: number | null
+          pos_y?: number | null
           role?: string | null
           save_id: string
           slot: string
@@ -674,6 +678,8 @@ export type Database = {
           id?: string
           is_starter?: boolean
           player_id?: string
+          pos_x?: number | null
+          pos_y?: number | null
           role?: string | null
           save_id?: string
           slot?: string
@@ -1481,7 +1487,6 @@ export type Database = {
       }
     }
     Enums: {
-      formation: "4-4-2" | "4-3-3" | "4-2-3-1" | "3-5-2" | "5-3-2" | "4-1-4-1"
       mentality: "defensive" | "balanced" | "attacking"
       passing_style: "short" | "mixed" | "direct"
     }
@@ -1611,7 +1616,6 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      formation: ["4-4-2", "4-3-3", "4-2-3-1", "3-5-2", "5-3-2", "4-1-4-1"],
       mentality: ["defensive", "balanced", "attacking"],
       passing_style: ["short", "mixed", "direct"],
     },

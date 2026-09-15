@@ -19,6 +19,13 @@ export interface SlotSpec {
   position: Position;
   defaultRole: string;
   canonical: GranularPosition;
+  // Coordenada livre (0-100%, mesma convenção de FORMATION_LAYOUT) que o
+  // usuário deu a esse slot na tela de Tática — ausente quando o slot ainda
+  // não saiu do layout padrão do template (ver rateTacticalTeam, que monta
+  // um slot "efetivo" com x/y + canonical/position recalculados quando a
+  // linha salva em tactic_lineups tiver pos_x/pos_y).
+  x?: number;
+  y?: number;
 }
 
 const F = (slot: string, position: Position, canonical: GranularPosition): SlotSpec =>
@@ -47,12 +54,12 @@ export const FORMATIONS: Record<FormationCode, SlotSpec[]> = {
   "3-5-2": [
     F("GK","GK","GOL"),
     F("LCB","DEF","ZAG"), F("CB","DEF","ZAG"), F("RCB","DEF","ZAG"),
-    F("LWB","MID","LE"), F("LCM","MID","MC"), F("CM","MID","MC"), F("RCM","MID","MC"), F("RWB","MID","LD"),
+    F("LWB","MID","ALE"), F("LCM","MID","MC"), F("CM","MID","MC"), F("RCM","MID","MC"), F("RWB","MID","ALD"),
     F("LST","FWD","CA"), F("RST","FWD","CA"),
   ],
   "5-3-2": [
     F("GK","GK","GOL"),
-    F("LWB","DEF","LE"), F("LCB","DEF","ZAG"), F("CB","DEF","ZAG"), F("RCB","DEF","ZAG"), F("RWB","DEF","LD"),
+    F("LWB","DEF","ALE"), F("LCB","DEF","ZAG"), F("CB","DEF","ZAG"), F("RCB","DEF","ZAG"), F("RWB","DEF","ALD"),
     F("LCM","MID","MC"), F("CM","MID","VOL"), F("RCM","MID","MC"),
     F("LST","FWD","CA"), F("RST","FWD","CA"),
   ],
@@ -63,10 +70,113 @@ export const FORMATIONS: Record<FormationCode, SlotSpec[]> = {
     F("LM","MID","ME"), F("LCM","MID","MC"), F("RCM","MID","MC"), F("RM","MID","MD"),
     F("ST","FWD","CA"),
   ],
+  "4-5-1": [
+    F("GK","GK","GOL"),
+    F("LB","DEF","LE"), F("LCB","DEF","ZAG"), F("RCB","DEF","ZAG"), F("RB","DEF","LD"),
+    F("LM","MID","ME"), F("LCM","MID","MC"), F("CM","MID","MC"), F("RCM","MID","MC"), F("RM","MID","MD"),
+    F("ST","FWD","CA"),
+  ],
+  "3-4-3": [
+    F("GK","GK","GOL"),
+    F("LCB","DEF","ZAG"), F("CB","DEF","ZAG"), F("RCB","DEF","ZAG"),
+    F("LWB","MID","ALE"), F("LCM","MID","MC"), F("RCM","MID","MC"), F("RWB","MID","ALD"),
+    F("LW","FWD","PE"), F("ST","FWD","CA"), F("RW","FWD","PD"),
+  ],
+  "4-4-1-1": [
+    F("GK","GK","GOL"),
+    F("LB","DEF","LE"), F("LCB","DEF","ZAG"), F("RCB","DEF","ZAG"), F("RB","DEF","LD"),
+    F("LM","MID","ME"), F("LCM","MID","MC"), F("RCM","MID","MC"), F("RM","MID","MD"),
+    F("SS","FWD","MEI"), F("ST","FWD","CA"),
+  ],
+  "5-4-1": [
+    F("GK","GK","GOL"),
+    F("LWB","DEF","ALE"), F("LCB","DEF","ZAG"), F("CB","DEF","ZAG"), F("RCB","DEF","ZAG"), F("RWB","DEF","ALD"),
+    F("LM","MID","ME"), F("LCM","MID","MC"), F("RCM","MID","MC"), F("RM","MID","MD"),
+    F("ST","FWD","CA"),
+  ],
+  "4-3-1-2": [
+    F("GK","GK","GOL"),
+    F("LB","DEF","LE"), F("LCB","DEF","ZAG"), F("RCB","DEF","ZAG"), F("RB","DEF","LD"),
+    F("DM","MID","VOL"), F("LCM","MID","MC"), F("RCM","MID","MC"),
+    F("AM","MID","MEI"),
+    F("LST","FWD","CA"), F("RST","FWD","CA"),
+  ],
 };
 
 export function formationSlots(f: FormationCode): SlotSpec[] {
   return FORMATIONS[f] ?? FORMATIONS["4-4-2"];
+}
+
+// -----------------------------------------------------------------------------
+// Tática 100% livre no campo (estilo FM): o usuário arrasta cada titular pra
+// QUALQUER ponto do campo, não só pros 11 marcadores fixos de um template —
+// ver src/routes/_authenticated/saves.$saveId.tactics.tsx. As três funções
+// abaixo fecham esse ciclo: dado o ponto (x,y) onde um jogador foi largado,
+// qual posição granular ele passa a jogar de verdade (`canonicalFromCoords`)
+// e qual grupo base pra fins de pontuação (`positionGroupFromY`); e dado o
+// XI inteiro já posicionado, qual o NOME da formação resultante
+// (`detectFormationLabel`) — a etiqueta é sempre CALCULADA a partir da
+// arrumação real, nunca escolhida antes.
+// -----------------------------------------------------------------------------
+
+// Âncora de referência (x,y) de cada posição granular OUTFIELD — calibrada a
+// partir das coordenadas já usadas nos 11 templates de FORMATION_LAYOUT.
+// GOL fica de fora de propósito: o goleiro nunca é reclassificado por
+// coordenada (ver comentário no chamador, saves.$saveId.tactics.tsx) — um
+// jogador de linha empurrado até o fundo do campo deve virar ZAG, não GOL.
+const POSITION_ANCHORS: Partial<Record<GranularPosition, { x: number; y: number }>> = {
+  ZAG: { x: 50, y: 78 },
+  LD: { x: 85, y: 70 }, LE: { x: 15, y: 70 },
+  ALD: { x: 88, y: 55 }, ALE: { x: 12, y: 55 },
+  VOL: { x: 50, y: 58 },
+  MC: { x: 50, y: 48 },
+  MD: { x: 80, y: 45 }, ME: { x: 20, y: 45 },
+  MEI: { x: 50, y: 28 },
+  PD: { x: 82, y: 16 }, PE: { x: 18, y: 16 },
+  CA: { x: 50, y: 10 },
+};
+
+export function canonicalFromCoords(x: number, y: number): GranularPosition {
+  let best: GranularPosition = "MC";
+  let bestDist = Infinity;
+  for (const [pos, anchor] of Object.entries(POSITION_ANCHORS)) {
+    const dist = (anchor!.x - x) ** 2 + (anchor!.y - y) ** 2;
+    if (dist < bestDist) { bestDist = dist; best = pos as GranularPosition; }
+  }
+  return best;
+}
+
+// Grupo base (pra fórmula de pontuação ataque/meio/defesa) puramente por
+// profundidade — de propósito NÃO depende da posição canônica: um ala (ALD/
+// ALE) jogando recuado conta como defesa, o mesmo ala empurrado conta como
+// meio, igual acontece de verdade num 5-3-2 vs. 3-5-2.
+export function positionGroupFromY(y: number): Position {
+  return y >= 65 ? "DEF" : y >= 33 ? "MID" : "FWD";
+}
+
+// Vão (em pontos percentuais de profundidade) que separa duas "linhas" do
+// time — folga suficiente pra absorver o zigue-zague natural de uma mesma
+// linha (ex. zagueiros a 76-80) sem juntar linhas de verdade distintas
+// (ex. linha de zagueiro a 76 vs. ala avançado a 55 — vão de 21, bem acima).
+const FORMATION_LINE_GAP = 10;
+
+// Nome da formação — calculado, nunca escolhido. Recebe a profundidade (y)
+// de cada um dos 10 jogadores de linha (SEM o goleiro), agrupa em linhas por
+// vão de profundidade (clustering simples por gap, método padrão pra dado
+// 1D) e formata como "4-3-3". Testado contra as coordenadas dos 11
+// templates prontos em __tests__/tactics.test.ts — todos batem com o nome
+// literal do próprio template.
+export function detectFormationLabel(outfieldY: number[]): string {
+  if (outfieldY.length === 0) return "";
+  const sorted = [...outfieldY].sort((a, b) => b - a); // mais recuado primeiro
+  const bands: number[] = [];
+  let last: number | null = null;
+  for (const y of sorted) {
+    if (last === null || last - y > FORMATION_LINE_GAP) bands.push(0);
+    bands[bands.length - 1]++;
+    last = y;
+  }
+  return bands.join("-");
 }
 
 // -----------------------------------------------------------------------------
@@ -119,6 +229,24 @@ export function familiarityFor(player: PlayerLike, canonical: GranularPosition):
   const errorChance = Math.max(0, 0.15 * (1 - progress / 100));
 
   return { level, progress, multiplier, errorChance };
+}
+
+// Quão bem os atributos do jogador batem com a "assinatura" de uma função
+// (4 atributos-chave dela, ver roles.ts) — 0..1. Extraído de
+// saves.$saveId.tactics.tsx (era local ali) pra reusar também no painel de
+// posições da ficha do jogador (saves.$saveId.players.$playerId.tsx).
+export function signatureFit(player: Pick<PlayerLike, "attributes" | "overall">, signature: string[]): number {
+  const a = (player.attributes ?? {}) as unknown as Record<string, number>;
+  const sigAvg = signature.length ? signature.reduce((s, k) => s + (a[k] ?? 10), 0) / signature.length : 10;
+  return (sigAvg / 20) * 0.7 + ((player.overall ?? 50) / 100) * 0.3;
+}
+
+// Estrela (1-5) de uma função ESPECÍFICA pra um jogador numa posição —
+// compara funções entre si pro mesmo jogador na mesma posição.
+export function roleFitStars(player: PlayerLike, role: RoleDef, canonical: GranularPosition): number {
+  const fam = familiarityFor(player, canonical);
+  const score = signatureFit(player, role.signature) * fam.multiplier;
+  return Math.max(1, Math.min(5, Math.round(score * 5)));
 }
 
 // -----------------------------------------------------------------------------
@@ -336,7 +464,7 @@ export function squadChemistryMultiplier(xiPlayers: { club_since?: string | null
 export function rateTacticalTeam(
   players: PlayerLike[],
   club: { formation?: FormationCode; mentality?: Mentality; pressing?: number; defensive_line?: number; tempo?: number; passing_style?: PassingStyle },
-  savedLineup?: { player_id: string; slot: string; role: string | null; instructions?: unknown }[],
+  savedLineup?: { player_id: string; slot: string; role: string | null; instructions?: unknown; pos_x?: number | null; pos_y?: number | null }[],
   todayISO?: string,
 ): TeamTacticalRating {
   const formation = club.formation ?? "4-4-2";
@@ -351,7 +479,18 @@ export function rateTacticalTeam(
     for (const s of slots) {
       const l = bySlot.get(s.slot);
       const p = l ? byId.get(l.player_id) : undefined;
-      if (p) { entries.push({ slot: s, player: p }); used.add(p.id); }
+      if (p && l) {
+        // Tática livre: a linha salva pode trazer a coordenada de verdade
+        // (usuário arrastou pra fora do ponto padrão do template) — nesse
+        // caso a posição/canônica usada na pontuação é a EFETIVA (derivada
+        // do ponto real), não mais a fixa do template. Goleiro nunca muda
+        // (ver canonicalFromCoords).
+        const effSlot = (l.pos_x != null && l.pos_y != null && s.position !== "GK")
+          ? { ...s, canonical: canonicalFromCoords(l.pos_x, l.pos_y), position: positionGroupFromY(l.pos_y), x: l.pos_x, y: l.pos_y }
+          : s;
+        entries.push({ slot: effSlot, player: p });
+        used.add(p.id);
+      }
     }
     // preenche slots faltantes automaticamente
     for (const s of slots) {

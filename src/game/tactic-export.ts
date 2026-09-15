@@ -18,7 +18,10 @@ import { normalizeInstructions, type PlayerInstructions } from "./player-instruc
 
 export const TACTIC_EXPORT_VERSION = 1;
 
-export const FORMATION_CODES: FormationCode[] = ["4-4-2", "4-3-3", "4-2-3-1", "3-5-2", "5-3-2", "4-1-4-1"];
+export const FORMATION_CODES: FormationCode[] = [
+  "4-4-2", "4-3-3", "4-2-3-1", "3-5-2", "5-3-2", "4-1-4-1",
+  "4-5-1", "3-4-3", "4-4-1-1", "5-4-1", "4-3-1-2",
+];
 const MENTALITIES: Mentality[] = ["defensive", "balanced", "attacking"];
 const PASSING_STYLES: PassingStyle[] = ["short", "mixed", "direct"];
 
@@ -26,6 +29,12 @@ export interface TacticExportSlot {
   slot: string;
   role: string;
   instructions?: PlayerInstructions;
+  // Coordenada livre (0-100%) do slot na tela de Tática — opcional pra não
+  // quebrar arquivos exportados antes da tática 100% livre existir. Sem
+  // isso, importar um arquivo antigo cai pro layout padrão do template
+  // (mesmo comportamento de sempre).
+  pos_x?: number;
+  pos_y?: number;
 }
 
 export interface TacticExport {
@@ -50,7 +59,7 @@ export interface TacticSnapshotLike {
   tempo: number;
   passing_style: PassingStyle;
   team_fluidity?: TeamFluidity;
-  lineup: { slot: string; playerId: string; role: string; instructions?: PlayerInstructions }[];
+  lineup: { slot: string; playerId: string; role: string; instructions?: PlayerInstructions; pos_x?: number; pos_y?: number }[];
 }
 
 export function toTacticExport(snapshot: TacticSnapshotLike): TacticExport {
@@ -65,7 +74,7 @@ export function toTacticExport(snapshot: TacticSnapshotLike): TacticExport {
     team_fluidity: snapshot.team_fluidity ?? "structured",
     slots: snapshot.lineup
       .filter((l) => l.role)
-      .map((l) => ({ slot: l.slot, role: l.role, instructions: l.instructions })),
+      .map((l) => ({ slot: l.slot, role: l.role, instructions: l.instructions, pos_x: l.pos_x, pos_y: l.pos_y })),
   };
 }
 
@@ -100,8 +109,10 @@ export function parseTacticExport(raw: unknown): TacticExport {
     if (!s || typeof s !== "object" || typeof (s as any).slot !== "string" || typeof (s as any).role !== "string") {
       throw new TacticImportError(`Arquivo inválido: posição ${i + 1} da lista está mal formada.`);
     }
-    const entry = s as { slot: string; role: string; instructions?: unknown };
-    return { slot: entry.slot, role: entry.role, instructions: normalizeInstructions(entry.instructions as any) };
+    const entry = s as { slot: string; role: string; instructions?: unknown; pos_x?: unknown; pos_y?: unknown };
+    const pos_x = typeof entry.pos_x === "number" && Number.isFinite(entry.pos_x) ? Math.max(5, Math.min(95, entry.pos_x)) : undefined;
+    const pos_y = typeof entry.pos_y === "number" && Number.isFinite(entry.pos_y) ? Math.max(5, Math.min(95, entry.pos_y)) : undefined;
+    return { slot: entry.slot, role: entry.role, instructions: normalizeInstructions(entry.instructions as any), pos_x, pos_y };
   });
 
   return {

@@ -18,6 +18,7 @@ const SLOTS: { position: BasePosition; natural: GranularPosition }[] = [
   { position: "GK", natural: "GOL" },
   { position: "DEF", natural: "ZAG" }, { position: "DEF", natural: "ZAG" },
   { position: "DEF", natural: "LD" }, { position: "DEF", natural: "LE" },
+  { position: "DEF", natural: "ALD" }, { position: "DEF", natural: "ALE" },
   { position: "MID", natural: "VOL" }, { position: "MID", natural: "MC" }, { position: "MID", natural: "MEI" },
   { position: "FWD", natural: "PD" }, { position: "FWD", natural: "PE" }, { position: "FWD", natural: "CA" },
 ];

@@ -266,8 +266,8 @@ export function mapPositionFromRatings(vals, name = "") {
     case "D E": return { base: "DEF", natural: "LE" };
     case "D C": return { base: "DEF", natural: "ZAG" };
     case "D D": return { base: "DEF", natural: "LD" };
-    case "A E": return { base: "DEF", natural: "LE" };
-    case "A D": return { base: "DEF", natural: "LD" };
+    case "A E": return { base: "DEF", natural: "ALE" };
+    case "A D": return { base: "DEF", natural: "ALD" };
     case "MD": return { base: "MID", natural: "VOL" };
     case "M E": return { base: "MID", natural: "ME" };
     case "M C": return { base: "MID", natural: "MC" };
@@ -289,6 +289,38 @@ export function mapPositionFromRatings(vals, name = "") {
     }
     default: return { base: "MID", natural: "MC" };
   }
+}
+
+// Coluna → posição granular, só pras que têm significado direto e
+// não-ambíguo (sem a heurística de comparação que mapPositionFromRatings usa
+// pras colunas MA*/PLR/PLA acima) — usado só pra achar posições SECUNDÁRIAS
+// a partir da nota bruta de cada uma das 16 colunas. "L" fica de fora (sem
+// certeza do que representa no export do Genie Scout — não inventar).
+const COL_TO_POSITION = {
+  "GR": "GOL", "D E": "LE", "D C": "ZAG", "D D": "LD", "A E": "ALE", "A D": "ALD",
+  "MD": "VOL", "M E": "ME", "M C": "MC", "M D": "MD", "MA C": "MEI",
+  "MA E": "PE", "MA D": "PD", "PLR": "CA", "PLA": "CA",
+};
+
+// Posições SECUNDÁRIAS reais, a partir das 16 notas do CSV — antes eram
+// descartadas de vez (só a de maior nota virava natural_position, achado
+// real reportado pelo usuário: "Raphinha vira só bom em PD quando o CSV tem
+// nota pra várias outras posições"). Pega até 3 posições diferentes da
+// primária cuja nota fica perto da melhor (≥ melhor-15 pontos, ou ≥65, o que
+// for maior) — mesmo espírito de "jogador realmente versátil tem 2-4
+// posições reais" que o FM usa.
+export function secondaryPositionsFromRatings(vals, primary) {
+  const best = Math.max(...vals);
+  const floor = Math.max(best - 15, 65);
+  const seen = new Map(); // posição -> melhor nota encontrada pra ela
+  for (let i = 0; i < POS_RATING_COLS.length; i++) {
+    const pos = COL_TO_POSITION[POS_RATING_COLS[i]];
+    if (!pos || pos === primary) continue;
+    const v = vals[i];
+    if (v < floor) continue;
+    if (!seen.has(pos) || seen.get(pos) < v) seen.set(pos, v);
+  }
+  return [...seen.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([pos]) => pos);
 }
 
 // Valor de mercado e salário — derivados de overall+idade. Os números do CSV
@@ -410,7 +442,7 @@ export function buildClubsAndPlayers(csvDir) {
       // (scripts/import-player-faces.mjs) igual já funciona pra escudo.
       id: digits(r[pId("ID Único")]),
       name, age, position: base,
-      natural_position: natural, secondary_positions: [],
+      natural_position: natural, secondary_positions: secondaryPositionsFromRatings(ratingVals, natural),
       role_scores: roleScores(ratingVals),
       foot: "right",
       overall, potential,

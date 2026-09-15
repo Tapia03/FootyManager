@@ -7,7 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useMemo, useState, useEffect, useRef } from "react";
-import { formationSlots, autoLineup, rateTacticalTeam, ratingToDisplay, familiarityFor, TACTIC_STYLES } from "@/game/tactics";
+import {
+  formationSlots, autoLineup, rateTacticalTeam, ratingToDisplay, familiarityFor, TACTIC_STYLES, signatureFit, roleFitStars,
+  canonicalFromCoords, positionGroupFromY, detectFormationLabel, type SlotSpec,
+} from "@/game/tactics";
 import { rolesForPosition, resolveRole, mirrorDiagramForCanonical, type RoleDef } from "@/game/roles";
 import {
   DEFAULT_INSTRUCTIONS, normalizeInstructions, isDefaultInstructions, INSTRUCTION_META, ROAM_META,
@@ -44,7 +47,7 @@ interface TacticPreset {
   tempo: number;
   passing_style: PassingStyle;
   team_fluidity?: TeamFluidity;
-  lineup: { slot: string; playerId: string; role: string; instructions?: PlayerInstructions }[];
+  lineup: { slot: string; playerId: string; role: string; instructions?: PlayerInstructions; pos_x?: number; pos_y?: number }[];
 }
 
 // Snapshot completo (mesmo shape de TacticPreset, sem id/name) — usado tanto
@@ -75,7 +78,10 @@ const LINE_LEVELS: { value: DialLevel; label: string }[] = [
   { value: "low", label: "Recuada" }, { value: "mid", label: "Média" }, { value: "high", label: "Alta" },
 ];
 
-const FORMATION_CODES: FormationCode[] = ["4-4-2", "4-3-3", "4-2-3-1", "3-5-2", "5-3-2", "4-1-4-1"];
+const FORMATION_CODES: FormationCode[] = [
+  "4-4-2", "4-3-3", "4-2-3-1", "3-5-2", "5-3-2", "4-1-4-1",
+  "4-5-1", "3-4-3", "4-4-1-1", "5-4-1", "4-3-1-2",
+];
 const MENTALITIES: { value: Mentality; label: string }[] = [
   { value: "defensive", label: "Defensiva" },
   { value: "balanced", label: "Equilibrada" },
@@ -128,20 +134,6 @@ function roleAbilityStars(player: any, canonical: GranularPosition): number {
     ? Math.max(...legal.map((r) => signatureFit(player, r.signature)))
     : (player.overall ?? 50) / 100;
   const score = best * fam.multiplier;
-  return Math.max(1, Math.min(5, Math.round(score * 5)));
-}
-
-function signatureFit(player: any, signature: string[]): number {
-  const a = player.attributes ?? {};
-  const sigAvg = signature.length ? signature.reduce((s: number, k: string) => s + (a[k] ?? 10), 0) / signature.length : 10;
-  return (sigAvg / 20) * 0.7 + ((player.overall ?? 50) / 100) * 0.3;
-}
-
-// Estrela pra uma função ESPECÍFICA (popup de função) — compara funções entre
-// si pro mesmo jogador na mesma posição.
-function roleFitStars(player: any, role: RoleDef, canonical: GranularPosition): number {
-  const fam = familiarityFor(player, canonical as any);
-  const score = signatureFit(player, role.signature) * fam.multiplier;
   return Math.max(1, Math.min(5, Math.round(score * 5)));
 }
 
@@ -203,7 +195,30 @@ function TacticsPage() {
   // src/lib/live-match.ts::applyPendingOverride, que aplica isso por cima na
   // hora de simular e o limpa sozinho depois — src/lib/advance-day.ts).
   const [scope, setScope] = useState<"permanent" | "next">("permanent");
-  const [slotAssign, setSlotAssign] = useState<Record<string, { playerId: string; role: string; instructions?: PlayerInstructions }>>({});
+  // x/y: coordenada livre (0-100%) que o usuário deu a esse slot arrastando
+  // no campo — ausente enquanto o slot ainda está no ponto padrão do
+  // template (ver applyFormationTemplate/autoFill, que preenchem x/y com o
+  // padrão na hora de aplicar; effCoord/effCanonical abaixo caem pro
+  // template quando ausente).
+  // x/y de cada slot (ver comentário acima) — de propósito NADA aqui reage
+  // a dragover. Uma versão anterior guardava a posição do ponteiro (e depois
+  // só o slot mais próximo) em estado durante o arraste pra mostrar um
+  // indicador visual de "encaixe" — isso causou um travamento real
+  // (dragover dispara centenas de vezes por segundo num arraste de
+  // verdade, cada disparo virando um re-render) e, pior, o próprio "encaixe"
+  // ia contra o pedido de liberdade total (o jogador sempre voltava pra
+  // posição de formação mais próxima em vez de ficar onde foi solto). Por
+  // isso o campo não guarda NENHUM estado durante o arraste — só lê a
+  // posição do ponteiro uma vez, no onDrop.
+  const [slotAssign, setSlotAssign] = useState<Record<string, { playerId: string; role: string; instructions?: PlayerInstructions; x?: number; y?: number }>>({});
+  const pitchRef = useRef<HTMLDivElement>(null);
+  // Jogador sendo arrastado no momento (banco OU outro slot) — enquanto
+  // != null, o campo destaca em TODOS os slots da formação atual o quão bem
+  // esse jogador específico se encaixaria ali (borda colorida por estrela),
+  // estilo FM. Só precisa ser setado no dragstart/limpo no dragend — o
+  // dragend do HTML5 drag-and-drop já dispara tanto em drop bem-sucedido
+  // quanto em drag cancelado, então não precisa ser tocado nos onDrop.
+  const [draggingPlayerId, setDraggingPlayerId] = useState<string | null>(null);
   // Slot aberto no seletor de jogador (clique no boneco, estilo "Swap X
   // with..." do FM) — alternativa ao arrastar, mais fácil de descobrir e de
   // usar num elenco grande. Os dois caminhos levam à mesma função de troca.
@@ -252,7 +267,12 @@ function TacticsPage() {
     if (!lineup.data || !players.data) return;
     if (lineup.data.length > 0) {
       const map: typeof slotAssign = {};
-      for (const l of lineup.data) map[l.slot] = { playerId: l.player_id, role: l.role ?? "", instructions: normalizeInstructions((l as any).instructions) };
+      for (const l of lineup.data) {
+        map[l.slot] = {
+          playerId: l.player_id, role: l.role ?? "", instructions: normalizeInstructions((l as any).instructions),
+          x: (l as any).pos_x ?? undefined, y: (l as any).pos_y ?? undefined,
+        };
+      }
       setSlotAssign(map);
     }
   }, [lineup.data, players.data]);
@@ -268,8 +288,32 @@ function TacticsPage() {
     const available = (players.data as any[]).filter((p) => checkAvailability(p, todayISO).available);
     const xi = autoLineup(available as any, formation);
     const map: typeof slotAssign = {};
-    for (const e of xi.entries) map[e.slot.slot] = { playerId: e.player.id, role: e.slot.defaultRole };
+    for (const e of xi.entries) {
+      const coord = slotCoords(formation, e.slot.slot);
+      map[e.slot.slot] = { playerId: e.player.id, role: e.slot.defaultRole, x: coord.x, y: coord.y };
+    }
     setSlotAssign(map);
+  }
+
+  // "Esquema inicial" — não é mais A formação, é só um atalho de arrumação
+  // pronta (o usuário arrasta livremente depois, ver o campo mais abaixo).
+  // Aplicar um template RESETA a coordenada de todo slot pro ponto padrão
+  // dele (mesmo id de slot reaparecendo em outro template, ex. "LCB", não
+  // pode herdar coordenada customizada de um template diferente) — quem já
+  // estava escalado continua escalado, só a posição no campo volta ao
+  // padrão; slots que não existem no novo template somem.
+  function applyFormationTemplate(code: FormationCode) {
+    setFormation(code);
+    setSlotAssign((prev) => {
+      const next: typeof prev = {};
+      for (const s of formationSlots(code)) {
+        const existing = prev[s.slot];
+        if (!existing) continue;
+        const coord = slotCoords(code, s.slot);
+        next[s.slot] = { ...existing, x: coord.x, y: coord.y };
+      }
+      return next;
+    });
   }
 
   // Põe `playerId` no `targetSlot` — se ele já estava em OUTRO slot, os dois
@@ -282,10 +326,16 @@ function TacticsPage() {
       const sourceSlotEntry = Object.entries(prev).find(([slot, v]) => slot !== targetSlot && v.playerId === playerId);
       const targetEntry = prev[targetSlot];
       if (sourceSlotEntry) {
-        const [sourceSlot] = sourceSlotEntry;
-        if (targetEntry) next[sourceSlot] = targetEntry; else delete next[sourceSlot];
+        const [sourceSlot, sourceVal] = sourceSlotEntry;
+        // Função/instruções/coordenada pertencem ao SLOT (a posição tática),
+        // não ao jogador que passa por ali — então na troca cada slot
+        // MANTÉM o que já era seu, só o playerId muda de lugar. (Bug real
+        // encontrado ao vivo: a versão antiga copiava o registro inteiro do
+        // alvo pro slot de origem, arrastando junto o x/y do alvo.)
+        if (targetEntry) next[sourceSlot] = { ...sourceVal, playerId: targetEntry.playerId };
+        else delete next[sourceSlot];
       }
-      next[targetSlot] = { playerId, role: prev[targetSlot]?.role ?? "", instructions: prev[targetSlot]?.instructions };
+      next[targetSlot] = { ...targetEntry, playerId };
       return next;
     });
   }
@@ -302,7 +352,7 @@ function TacticsPage() {
     setPassing(preset.passing_style);
     setFluidity(preset.team_fluidity ?? "structured");
     const map: typeof slotAssign = {};
-    for (const l of preset.lineup) map[l.slot] = { playerId: l.playerId, role: l.role, instructions: normalizeInstructions(l.instructions) };
+    for (const l of preset.lineup) map[l.slot] = { playerId: l.playerId, role: l.role, instructions: normalizeInstructions(l.instructions), x: l.pos_x, y: l.pos_y };
     setSlotAssign(map);
     setActivePresetId(preset.id);
   }
@@ -323,7 +373,7 @@ function TacticsPage() {
     setPassing(parsed.passing_style);
     setFluidity(parsed.team_fluidity);
     const map: typeof slotAssign = {};
-    for (const s of parsed.slots) map[s.slot] = { playerId: "", role: s.role, instructions: s.instructions };
+    for (const s of parsed.slots) map[s.slot] = { playerId: "", role: s.role, instructions: s.instructions, x: s.pos_x, y: s.pos_y };
     setSlotAssign(map);
     setActivePresetId(null);
   }
@@ -371,6 +421,7 @@ function TacticsPage() {
       .map(([slot, v]) => ({
         slot, playerId: v.playerId, role: v.role || slots.find((s) => s.slot === slot)?.defaultRole || "",
         instructions: normalizeInstructions(v.instructions),
+        pos_x: v.x, pos_y: v.y,
       }));
   }
 
@@ -466,6 +517,8 @@ function TacticsPage() {
           slot: s.slot,
           role: slotAssign[s.slot].role || s.defaultRole,
           instructions: normalizeInstructions(slotAssign[s.slot].instructions),
+          pos_x: slotAssign[s.slot].x ?? null,
+          pos_y: slotAssign[s.slot].y ?? null,
           is_starter: true,
         }));
       if (rows.length > 0) {
@@ -484,21 +537,112 @@ function TacticsPage() {
     onError: (e: any) => toast.error(e.message ?? "Erro ao salvar tática"),
   });
 
+  // A PARTIR DAQUI SÓ HOOKS (e o mínimo de que eles precisam) — precisam
+  // rodar em TODO render, mesmo antes do clube/elenco carregar, senão o
+  // React quebra ("mais hooks que no render anterior") assim que o
+  // carregamento terminar e o guard de "Carregando…" abaixo parar de
+  // disparar. Tudo aqui é seguro com dado vazio (allPlayers cai pra []); o
+  // que realmente precisa do clube carregado (cores do uniforme etc.) fica
+  // DEPOIS do guard.
+  const allPlayers = (players.data ?? []) as any[];
+  const usedIds = useMemo(
+    () => new Set(Object.values(slotAssign).map((v) => v.playerId).filter(Boolean)),
+    [slotAssign],
+  );
+
+  // Tática 100% livre: a posição EFETIVA de um slot é a coordenada que o
+  // usuário deu a ele (arrastando), caindo pro ponto padrão do template
+  // quando ele nunca foi mexido. O goleiro nunca é reclassificado — fica
+  // sempre GOL/GK mesmo que a coordenada dele mude um pouco.
+  function effCoord(s: SlotSpec): { x: number; y: number } {
+    const a = slotAssign[s.slot];
+    if (a?.x != null && a?.y != null) return { x: a.x, y: a.y };
+    return slotCoords(formation, s.slot);
+  }
+  function effCanonical(s: SlotSpec): GranularPosition {
+    if (s.position === "GK") return s.canonical;
+    const c = effCoord(s);
+    return slotAssign[s.slot]?.x != null ? canonicalFromCoords(c.x, c.y) : s.canonical;
+  }
+
+  // Tudo abaixo (filledEntries/avgFamiliarity/teamRating/benchList) é
+  // PESADO — rateTacticalTeam sozinho itera o elenco inteiro com
+  // química/atributos, e a lista de reservas roda roleAbilityStars pro
+  // elenco INTEIRO — por isso fica em useMemo com dependências que
+  // propositalmente NÃO incluem draggingPlayerId (única coisa que muda
+  // durante um arraste): recalcular tudo isso a cada mudança já foi causa
+  // de lentidão real num render storm por evento de dragover (ver histórico
+  // do onDrop do campo mais abaixo, que não guarda mais estado nenhum
+  // durante o arraste).
+  const filledEntries = useMemo(
+    () => slots
+      .map((s) => ({ slot: s, player: slotAssign[s.slot] ? allPlayers.find((p) => p.id === slotAssign[s.slot].playerId) : undefined }))
+      .filter((e) => e.player),
+    [slots, slotAssign, allPlayers],
+  );
+  const avgFamiliarity = useMemo(() => filledEntries.length > 0
+    ? filledEntries.reduce((acc, e) => acc + familiarityFor(e.player, effCanonical(e.slot)).multiplier, 0) / filledEntries.length
+    : 0, [filledEntries]);
+  const savedLineupForRating = useMemo(() => Object.entries(slotAssign)
+    .filter(([, v]) => v.playerId)
+    .map(([slot, v]) => ({ player_id: v.playerId, slot, role: v.role || null, instructions: v.instructions, pos_x: v.x ?? null, pos_y: v.y ?? null })),
+    [slotAssign]);
+  const teamRating = useMemo(() => rateTacticalTeam(
+    allPlayers,
+    { formation, mentality, pressing, defensive_line: defLine, tempo, passing_style: passing },
+    savedLineupForRating,
+    todayISO,
+  ), [allPlayers, formation, mentality, pressing, defLine, tempo, passing, savedLineupForRating, todayISO]);
+  const benchList = useMemo(() => allPlayers
+    .filter((p) => !usedIds.has(p.id))
+    .map((p) => ({
+      player: p,
+      avail: todayISO ? checkAvailability(p, todayISO) : { available: true, label: "" },
+      stars: roleAbilityStars(p, (p.natural_position ?? p.position) as GranularPosition),
+    }))
+    .sort((a, b) => b.player.overall - a.player.overall),
+    [allPlayers, usedIds, todayISO]);
+
   if (!clubId || club.isLoading || players.isLoading) {
     return <div className="text-muted-foreground">Carregando…</div>;
   }
 
-  const allPlayers = (players.data ?? []) as any[];
-  const usedIds = new Set(Object.values(slotAssign).map((v) => v.playerId).filter(Boolean));
+  const draggingPlayer = draggingPlayerId ? allPlayers.find((p) => p.id === draggingPlayerId) : null;
+
+  // Nome da formação — nunca escolhido, sempre calculado a partir de onde os
+  // titulares realmente estão (ver detectFormationLabel em tactics.ts). Só
+  // exibido nesta tela (clubs.formation continua guardando o ESQUEMA INICIAL
+  // escolhido no dropdown, usado pra reconstruir os 11 slots ao recarregar —
+  // ver applyFormationTemplate).
+  const liveFormationLabel = detectFormationLabel(
+    slots.filter((s) => s.position !== "GK").map((s) => effCoord(s).y),
+  ) || formation;
+
+  // Coordenada sempre recortada a [5,95] antes de qualquer cálculo — nunca
+  // deixa ninguém em cima da trave ou fora da lateral.
+  const clampCoord = (v: number) => Math.max(5, Math.min(95, v));
+  function nearestSlot(x: number, y: number): { slot: string; dist: number } | null {
+    let best: { slot: string; dist: number } | null = null;
+    for (const s of slots) {
+      const c = effCoord(s);
+      const dist = Math.hypot(c.x - x, c.y - y);
+      if (!best || dist < best.dist) best = { slot: s.slot, dist };
+    }
+    return best;
+  }
+  function pointFromPitchEvent(e: { clientX: number; clientY: number }): { x: number; y: number } | null {
+    if (!pitchRef.current) return null;
+    const rect = pitchRef.current.getBoundingClientRect();
+    return {
+      x: clampCoord(((e.clientX - rect.left) / rect.width) * 100),
+      y: clampCoord(((e.clientY - rect.top) / rect.height) * 100),
+    };
+  }
 
   // Cores do uniforme do clube — os tokens dos jogadores no campo usam elas
   // (mesma ideia do protótipo do AI Studio que o usuário curtiu).
   const kit = clubColors(club.data as any);
   const kitText = contrastText(kit.primary);
-
-  const filledEntries = slots
-    .map((s) => ({ slot: s, player: slotAssign[s.slot] ? allPlayers.find((p) => p.id === slotAssign[s.slot].playerId) : undefined }))
-    .filter((e) => e.player);
 
   // XI atual (pela escalação no campo) + sugestão automática de cobradores.
   const xiPlayers = filledEntries.map((e) => e.player);
@@ -509,24 +653,8 @@ function TacticsPage() {
   };
   const playerNameById = (id: string) => allPlayers.find((p) => p.id === id)?.name ?? "—";
   const effectiveCaptainId = takers.captain || suggestedByRole.captain || "";
-  const avgFamiliarity = filledEntries.length > 0
-    ? filledEntries.reduce((acc, e) => acc + familiarityFor(e.player, e.slot.canonical).multiplier, 0) / filledEntries.length
-    : 0;
   const familiarityPct = Math.round(avgFamiliarity * 100);
   const intensityPct = Math.round(((pressing + tempo) / 10) * 100);
-
-  // Força do time — mesma conta que o motor de simulação faz de verdade
-  // (rateTacticalTeam, com os modificadores táticos já aplicados), pra dar
-  // ao usuário uma prévia do ataque/meio/defesa antes de entrar em campo.
-  const savedLineupForRating = Object.entries(slotAssign)
-    .filter(([, v]) => v.playerId)
-    .map(([slot, v]) => ({ player_id: v.playerId, slot, role: v.role || null, instructions: v.instructions }));
-  const teamRating = rateTacticalTeam(
-    allPlayers,
-    { formation, mentality, pressing, defensive_line: defLine, tempo, passing_style: passing },
-    savedLineupForRating,
-    todayISO,
-  );
   const ratingPct = (v: number) => Math.max(4, ratingToDisplay(v));
 
   // Template ativo — só marca destaque quando os 5 campos batem EXATAMENTE
@@ -646,13 +774,17 @@ function TacticsPage() {
         </div>
 
         <div>
-          <div className="fm-eyebrow mb-1">Estilo tático</div>
+          <div className="fm-eyebrow mb-1">Esquema inicial</div>
           <select
             className="w-full h-9 px-2 rounded border bg-background text-sm font-semibold"
-            value={formation} onChange={(e) => setFormation(e.target.value as FormationCode)}
+            value={formation} onChange={(e) => applyFormationTemplate(e.target.value)}
           >
             {FORMATION_CODES.map((f) => <option key={f} value={f}>{f}</option>)}
           </select>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Só arruma o ponto de partida — arraste os jogadores no campo pra
+            qualquer lugar depois, o nome da formação acompanha sozinho.
+          </p>
         </div>
 
         <div>
@@ -766,7 +898,14 @@ function TacticsPage() {
         </Card>
 
         <Card className="p-3">
+          <div className="fm-eyebrow mb-2 flex items-center justify-between">
+            <span>Campo tático</span>
+            <span className="text-sm font-bold text-foreground" title="Calculado a partir de onde os titulares estão agora — arraste pra mudar.">
+              {liveFormationLabel}
+            </span>
+          </div>
           <div
+            ref={pitchRef}
             className="relative mx-auto rounded-md overflow-hidden border border-border"
             style={{
               aspectRatio: "3 / 4",
@@ -776,6 +915,39 @@ function TacticsPage() {
               background: "repeating-linear-gradient(to bottom, #1e6b3a 0, #1e6b3a 12.5%, #1a5f33 12.5%, #1a5f33 25%)",
             }}
             onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const point = pointFromPitchEvent(e);
+              const raw = e.dataTransfer.getData("text/plain");
+              if (!raw || !point) return;
+              const data = JSON.parse(raw) as { from: "bench" | "slot"; playerId: string; slotId?: string };
+
+              if (data.from === "slot" && data.slotId) {
+                const originSlot = slots.find((sl) => sl.slot === data.slotId);
+                if (!originSlot || originSlot.position === "GK") return; // goleiro não reposiciona livre
+                // Reposicionamento 100% livre: solta em cima de outro boneco
+                // (o `<div>` de cada slot, mais abaixo) troca normal — isso
+                // aqui é só o fundo do campo, então SEMPRE move a coordenada
+                // do PRÓPRIO slot pro ponto exato, sem "ímã" puxando de volta
+                // pra nenhuma posição de formação.
+                setSlotAssign((prev) => ({
+                  ...prev,
+                  [data.slotId!]: { ...prev[data.slotId!], x: point.x, y: point.y },
+                }));
+                return;
+              }
+
+              if (data.from === "bench") {
+                // banco só pode ocupar um dos 11 slots já existentes (nunca
+                // cria um 12º) — entra no mais próximo do ponto solto, mas a
+                // coordenada final é sempre o ponto exato que foi solto.
+                const nearest = nearestSlot(point.x, point.y);
+                if (!nearest) return;
+                assignPlayerToSlot(nearest.slot, data.playerId);
+                const slotId = nearest.slot;
+                setSlotAssign((prev) => ({ ...prev, [slotId]: { ...prev[slotId], x: point.x, y: point.y } }));
+              }
+            }}
           >
             <svg
               className="absolute inset-0 w-full h-full pointer-events-none"
@@ -822,13 +994,21 @@ function TacticsPage() {
             </svg>
 
             {slots.map((s, idx) => {
-              const coord = slotCoords(formation, s.slot);
+              const coord = effCoord(s);
+              const canonical = effCanonical(s);
               const cur = slotAssign[s.slot];
               const curPlayer = cur ? allPlayers.find((p) => p.id === cur.playerId) : undefined;
-              const fam = curPlayer ? familiarityFor(curPlayer, s.canonical) : null;
-              const ringColor = !fam ? "ring-white/40" :
-                fam.level === "natural" ? "ring-ok" :
-                fam.level === "proficiente" ? "ring-warn" : "ring-danger";
+              const fam = curPlayer ? familiarityFor(curPlayer, canonical) : null;
+              // Enquanto um jogador está sendo arrastado, a cor do anel troca
+              // de "aptidão do ocupante atual" pra "aptidão do jogador
+              // arrastado NESSE slot" — é o destaque que mostra pra onde dá
+              // pra soltar, igual ao FM.
+              const dragStars = draggingPlayer ? roleAbilityStars(draggingPlayer, canonical) : null;
+              const ringColor = dragStars != null
+                ? (dragStars >= 4 ? "ring-ok" : dragStars === 3 ? "ring-warn" : "ring-danger")
+                : !fam ? "ring-white/40"
+                : fam.level === "natural" ? "ring-ok"
+                : fam.level === "proficiente" ? "ring-warn" : "ring-danger";
               return (
                 <div
                   key={s.slot}
@@ -837,6 +1017,7 @@ function TacticsPage() {
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => {
                     e.preventDefault();
+                    e.stopPropagation(); // soltou exatamente em cima do boneco: troca certeira, não deixa o contêiner tratar como reposicionamento
                     const raw = e.dataTransfer.getData("text/plain");
                     if (!raw) return;
                     const data = JSON.parse(raw) as { from: "bench" | "slot"; playerId: string; slotId?: string };
@@ -844,7 +1025,9 @@ function TacticsPage() {
                   }}
                 >
                   <div
-                    className={`relative flex size-10 items-center justify-center rounded-md ring-2 ${ringColor} shadow-lg`}
+                    className={`relative flex size-10 items-center justify-center rounded-md shadow-lg transition-all ${
+                      dragStars != null ? `ring-4 ${ringColor} animate-pulse` : `ring-2 ${ringColor}`
+                    }`}
                   >
                     {/* Camisa — clip-path em vez de rounded-full: gola em V +
                         ombros/mangas anguladas, estilo o boneco do FM (o anel
@@ -854,19 +1037,36 @@ function TacticsPage() {
                       draggable={!!curPlayer}
                       onDragStart={(e) => {
                         if (!curPlayer) return;
+                        setDraggingPlayerId(curPlayer.id);
                         e.dataTransfer.setData("text/plain", JSON.stringify({ from: "slot", slotId: s.slot, playerId: curPlayer.id }));
                       }}
+                      onDragEnd={() => setDraggingPlayerId(null)}
                       onClick={() => setPickerSlot(s.slot)}
-                      className={`flex size-9 cursor-pointer select-none items-center justify-center text-[10px] font-bold hover:brightness-110 ${
+                      className={`relative flex size-9 cursor-pointer select-none items-center justify-center overflow-hidden text-[10px] font-bold hover:brightness-110 ${
                         curPlayer ? "" : "bg-white/10 text-white/50"
                       }`}
                       style={{
                         clipPath: "polygon(35% 0%, 65% 0%, 100% 22%, 85% 38%, 85% 100%, 15% 100%, 15% 38%, 0% 22%)",
                         ...(curPlayer ? { backgroundColor: kit.primary, color: kitText } : {}),
                       }}
-                      title={curPlayer ? `${curPlayer.name} — ${s.slot} (${s.canonical}) — clique pra trocar` : `${s.slot} (${s.canonical}) — clique pra escalar`}
+                      title={curPlayer ? `${curPlayer.name} — ${s.slot} (${canonical}) — clique pra trocar` : `${s.slot} (${canonical}) — clique pra escalar`}
                     >
-                      {curPlayer ? (curPlayer.squad_number ?? initialsOf(curPlayer.name)) : idx + 1}
+                      {/* Foto real do jogador (face_url, ver import-player-faces.mjs)
+                          preenchendo a camisa — sem foto real, cai pro número/
+                          iniciais de sempre (mais útil que uma silhueta genérica
+                          num ícone tão pequeno). */}
+                      {curPlayer?.face_url ? (
+                        <img
+                          src={curPlayer.face_url}
+                          alt={curPlayer.name}
+                          className="absolute inset-0 h-full w-full object-cover object-top"
+                          draggable={false}
+                        />
+                      ) : curPlayer ? (
+                        curPlayer.squad_number ?? initialsOf(curPlayer.name)
+                      ) : (
+                        idx + 1
+                      )}
                     </div>
                     {curPlayer && curPlayer.id === effectiveCaptainId && (
                       <span
@@ -890,7 +1090,7 @@ function TacticsPage() {
                   </div>
                   {curPlayer && (
                     <div className={`text-[8px] font-bold leading-none ${TONE_TEXT[ratingTone(curPlayer.overall)]}`}>
-                      {resolveRole(cur?.role, s.canonical).shortCode} • {curPlayer.overall}
+                      {resolveRole(cur?.role, canonical).shortCode} • {curPlayer.overall}
                     </div>
                   )}
                 </div>
@@ -898,7 +1098,8 @@ function TacticsPage() {
             })}
           </div>
           <p className="fm-eyebrow mt-2 text-center">
-            Clique num boneco pra escalar/trocar, ou arraste do banco
+            Arraste um titular pra qualquer ponto do campo, ou um jogador do
+            banco pra escalar — solte perto de outro pra trocar de lugar
           </p>
         </Card>
       </div>
@@ -906,13 +1107,14 @@ function TacticsPage() {
       {pickerSlot && (() => {
         const slot = slots.find((s) => s.slot === pickerSlot);
         if (!slot) return null;
+        const canonical = effCanonical(slot);
         const curId = slotAssign[pickerSlot]?.playerId;
         const candidates = allPlayers
           .filter((pl) => pl.id !== curId)
           .map((pl) => ({
             player: pl,
-            fam: familiarityFor(pl, slot.canonical),
-            stars: roleAbilityStars(pl, slot.canonical),
+            fam: familiarityFor(pl, canonical),
+            stars: roleAbilityStars(pl, canonical),
             avail: todayISO ? checkAvailability(pl, todayISO) : { available: true, label: "" },
           }))
           .sort((a, b) => b.stars - a.stars || b.player.overall - a.player.overall);
@@ -923,7 +1125,7 @@ function TacticsPage() {
               <DialogHeader className="border-b px-4 py-3">
                 <DialogTitle className="flex items-center gap-2 text-sm">
                   <ArrowLeftRight className="size-4 text-primary" />
-                  {slot.slot} ({positionLabel(slot.canonical)})
+                  {slot.slot} ({positionLabel(canonical)})
                   {curPlayer && <span className="font-normal text-muted-foreground">— trocar {curPlayer.name}</span>}
                 </DialogTitle>
               </DialogHeader>
@@ -971,36 +1173,37 @@ function TacticsPage() {
       {roleSlot && (() => {
         const slot = slots.find((s) => s.slot === roleSlot);
         if (!slot) return null;
+        const canonical = effCanonical(slot);
         const cur = slotAssign[roleSlot];
         const curPlayer = cur ? allPlayers.find((pl) => pl.id === cur.playerId) : undefined;
-        const currentRole = resolveRole(cur?.role, slot.canonical);
+        const currentRole = resolveRole(cur?.role, canonical);
         // Só as funções LEGAIS pra essa posição — é isso que impede um
         // centroavante de virar "Zagueiro Construtor".
-        const legalRoles = rolesForPosition(slot.canonical);
+        const legalRoles = rolesForPosition(canonical);
         return (
           <Dialog open onOpenChange={(open) => !open && setRoleSlot(null)}>
             <DialogContent className="max-h-[80vh] max-w-lg overflow-hidden p-0">
               <DialogHeader className="border-b px-4 py-3">
                 <DialogTitle className="text-sm">
-                  Função — {slot.slot} ({positionLabel(slot.canonical)})
+                  Função — {slot.slot} ({positionLabel(canonical)})
                   {curPlayer && <span className="font-normal text-muted-foreground"> · {curPlayer.name}</span>}
                 </DialogTitle>
               </DialogHeader>
               <div className="max-h-[65vh] overflow-y-auto">
                 {legalRoles.map((role) => {
-                  const stars = curPlayer ? roleFitStars(curPlayer, role, slot.canonical) : 0;
+                  const stars = curPlayer ? roleFitStars(curPlayer, role, canonical) : 0;
                   const active = role.key === currentRole.key;
                   return (
                     <button
                       key={role.key}
                       type="button"
                       onClick={() => {
-                        setSlotAssign((prev) => ({ ...prev, [roleSlot]: { playerId: prev[roleSlot]?.playerId ?? "", role: role.key } }));
+                        setSlotAssign((prev) => ({ ...prev, [roleSlot]: { ...prev[roleSlot], playerId: prev[roleSlot]?.playerId ?? "", role: role.key } }));
                         setRoleSlot(null);
                       }}
                       className={`flex w-full items-center gap-3 border-b px-4 py-2.5 text-left last:border-b-0 hover:bg-elevated/60 ${active ? "bg-primary/10" : ""}`}
                     >
-                      <RoleDiagram role={role} canonical={slot.canonical} />
+                      <RoleDiagram role={role} canonical={canonical} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <span className={`text-sm font-medium ${active ? "text-primary" : ""}`}>
@@ -1031,6 +1234,7 @@ function TacticsPage() {
       {instructionsSlot && (() => {
         const slot = slots.find((s) => s.slot === instructionsSlot);
         if (!slot) return null;
+        const canonical = effCanonical(slot);
         const cur = slotAssign[instructionsSlot];
         const curPlayer = cur ? allPlayers.find((pl) => pl.id === cur.playerId) : undefined;
         const ins = normalizeInstructions(cur?.instructions);
@@ -1038,6 +1242,7 @@ function TacticsPage() {
           setSlotAssign((prev) => ({
             ...prev,
             [instructionsSlot]: {
+              ...prev[instructionsSlot],
               playerId: prev[instructionsSlot]?.playerId ?? "",
               role: prev[instructionsSlot]?.role ?? "",
               instructions: { ...normalizeInstructions(prev[instructionsSlot]?.instructions), ...patch },
@@ -1051,7 +1256,7 @@ function TacticsPage() {
             <DialogContent className="max-h-[85vh] max-w-lg overflow-hidden p-0">
               <DialogHeader className="border-b px-4 py-3">
                 <DialogTitle className="text-sm">
-                  Instruções — {slot.slot} ({positionLabel(slot.canonical)})
+                  Instruções — {slot.slot} ({positionLabel(canonical)})
                   {curPlayer && <span className="font-normal text-muted-foreground"> · {curPlayer.name}</span>}
                 </DialogTitle>
               </DialogHeader>
@@ -1185,9 +1390,10 @@ function TacticsPage() {
           }}
         >
           {slots.map((s) => {
+            const canonical = effCanonical(s);
             const cur = slotAssign[s.slot];
             const curPlayer = cur ? allPlayers.find((p) => p.id === cur.playerId) : undefined;
-            const stars = curPlayer ? roleAbilityStars(curPlayer, s.canonical) : 0;
+            const stars = curPlayer ? roleAbilityStars(curPlayer, canonical) : 0;
             const hasCustomInstructions = !isDefaultInstructions(normalizeInstructions(cur?.instructions));
             return (
               <div
@@ -1195,11 +1401,13 @@ function TacticsPage() {
                 draggable={!!curPlayer}
                 onDragStart={(e) => {
                   if (!curPlayer) return;
+                  setDraggingPlayerId(curPlayer.id);
                   e.dataTransfer.setData("text/plain", JSON.stringify({ from: "slot", slotId: s.slot, playerId: curPlayer.id }));
                 }}
+                onDragEnd={() => setDraggingPlayerId(null)}
                 className="grid grid-cols-[52px_1fr_60px_28px_28px] gap-1 px-3 py-1.5 items-center text-xs border-b border-border/50 hover:bg-elevated/50 cursor-grab active:cursor-grabbing"
               >
-                <div className="font-mono text-muted-foreground">{s.slot}</div>
+                <div className="font-mono text-muted-foreground" title={s.slot}>{canonical}</div>
                 <div className="min-w-0">
                   {curPlayer ? (
                     <>
@@ -1221,7 +1429,7 @@ function TacticsPage() {
                           onClick={(e) => { e.stopPropagation(); setRoleSlot(s.slot); }}
                           className="flex min-w-0 flex-1 items-center justify-between gap-1 rounded border bg-background px-1 py-0.5 text-[10px] text-left hover:border-primary/50"
                         >
-                          <span className="truncate">{resolveRole(cur.role, s.canonical).label}</span>
+                          <span className="truncate">{resolveRole(cur.role, canonical).label}</span>
                           <span className="shrink-0 text-muted-foreground">▾</span>
                         </button>
                         <button
@@ -1254,41 +1462,37 @@ function TacticsPage() {
 
         <div className="fm-eyebrow px-3 py-2 border-y border-border bg-elevated/60">Reservas</div>
         <div className="max-h-[260px] overflow-y-auto">
-          {allPlayers
-            .filter((p) => !usedIds.has(p.id))
-            .sort((a, b) => b.overall - a.overall)
-            .map((p) => {
-              const avail = todayISO ? checkAvailability(p, todayISO) : { available: true };
-              return (
-                <div
-                  key={p.id}
-                  draggable={avail.available}
-                  onDragStart={(e) => {
-                    if (!avail.available) return;
-                    e.dataTransfer.setData("text/plain", JSON.stringify({ from: "bench", playerId: p.id }));
-                  }}
-                  className={`flex items-center justify-between gap-2 px-3 py-1.5 text-xs border-b border-border/50 ${
-                    avail.available ? "hover:bg-elevated/50 cursor-grab active:cursor-grabbing" : "opacity-50 cursor-not-allowed"
-                  }`}
-                  title={avail.available ? undefined : avail.label}
-                >
-                  <div className="min-w-0 truncate">
-                    <span className="font-medium">{p.name}</span>{" "}
-                    <span className="text-muted-foreground">{positionLabel(p.natural_position ?? p.position)}</span>
-                  </div>
-                  {avail.available ? (
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Stars n={roleAbilityStars(p, (p.natural_position ?? p.position) as GranularPosition)} />
-                      <RatingBadge value={p.overall} />
-                    </div>
-                  ) : (
-                    <span className={`shrink-0 ${avail.reason === "injured" ? "text-danger" : "text-warn"}`}>
-                      {avail.reason === "injured" ? "🩹" : avail.reason === "doubtful" ? "❓" : "🚫"} {avail.label}
-                    </span>
-                  )}
+          {benchList.map(({ player: p, avail, stars }) => (
+            <div
+              key={p.id}
+              draggable={avail.available}
+              onDragStart={(e) => {
+                if (!avail.available) return;
+                setDraggingPlayerId(p.id);
+                e.dataTransfer.setData("text/plain", JSON.stringify({ from: "bench", playerId: p.id }));
+              }}
+              onDragEnd={() => setDraggingPlayerId(null)}
+              className={`flex items-center justify-between gap-2 px-3 py-1.5 text-xs border-b border-border/50 ${
+                avail.available ? "hover:bg-elevated/50 cursor-grab active:cursor-grabbing" : "opacity-50 cursor-not-allowed"
+              }`}
+              title={avail.available ? undefined : avail.label}
+            >
+              <div className="min-w-0 truncate">
+                <span className="font-medium">{p.name}</span>{" "}
+                <span className="text-muted-foreground">{positionLabel(p.natural_position ?? p.position)}</span>
+              </div>
+              {avail.available ? (
+                <div className="flex shrink-0 items-center gap-2">
+                  <Stars n={stars} />
+                  <RatingBadge value={p.overall} />
                 </div>
-              );
-            })}
+              ) : (
+                <span className={`shrink-0 ${avail.reason === "injured" ? "text-danger" : "text-warn"}`}>
+                  {avail.reason === "injured" ? "🩹" : avail.reason === "doubtful" ? "❓" : "🚫"} {avail.label}
+                </span>
+              )}
+            </div>
+          ))}
         </div>
       </Card>
     </div>

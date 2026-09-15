@@ -12,7 +12,9 @@ export type Position = "GK" | "DEF" | "MID" | "FWD";
 export type GranularPosition =
   | "GOL"                 // goleiro
   | "ZAG"                 // zagueiro (centro)
-  | "LD" | "LE"           // lateral direito / esquerdo (inclui ala)
+  | "LD" | "LE"           // lateral direito / esquerdo
+  | "ALD" | "ALE"         // ala direita / esquerda (wing-back — mais ofensivo que o lateral,
+                          // nota própria no CSV do Genie Scout: "A E"/"A D", distinta de "D E"/"D D")
   | "VOL"                 // volante (meio defensivo)
   | "MC"                  // meio-campo central
   | "MD" | "ME"           // meia direita / esquerda (ou ponta recuado)
@@ -21,11 +23,12 @@ export type GranularPosition =
   | "CA";                 // centroavante
 
 export const GRANULAR_POSITIONS: GranularPosition[] = [
-  "GOL", "ZAG", "LD", "LE", "VOL", "MC", "MD", "ME", "MEI", "PD", "PE", "CA",
+  "GOL", "ZAG", "LD", "LE", "ALD", "ALE", "VOL", "MC", "MD", "ME", "MEI", "PD", "PE", "CA",
 ];
 
 export const GRANULAR_POSITION_LABELS: Record<GranularPosition, string> = {
   GOL: "Goleiro", ZAG: "Zagueiro", LD: "Lateral direito", LE: "Lateral esquerdo",
+  ALD: "Ala direita", ALE: "Ala esquerda",
   VOL: "Volante", MC: "Meio-campo", MD: "Meia direita", ME: "Meia esquerda",
   MEI: "Meia-atacante", PD: "Ponta direita", PE: "Ponta esquerda", CA: "Centroavante",
 };
@@ -97,7 +100,13 @@ export interface ClubLike {
   captain_id?: string | null;
 }
 
-export type FormationCode = "4-4-2" | "4-3-3" | "4-2-3-1" | "3-5-2" | "5-3-2" | "4-1-4-1";
+// Antes era uma union fixa dos templates prontos — agora o rótulo exibido é
+// CALCULADO a partir de onde o usuário realmente arrastou cada titular
+// (ver detectFormationLabel em tactics.ts), então pode ser qualquer
+// combinação tipo "4-1-3-2", não só uma das 11 conhecidas. Os templates
+// prontos continuam existindo como `FORMATION_CODES` (tactics.ts) — usados
+// pro dropdown de início rápido e pro auto-escalar da IA.
+export type FormationCode = string;
 export type Mentality = "defensive" | "balanced" | "attacking";
 export type PassingStyle = "short" | "mixed" | "direct";
 export type TeamFluidity = "structured" | "fluid";
@@ -144,6 +153,12 @@ export interface MatchLineupEntry {
   // live-positions.ts ler direto de MatchLineupEntry sem precisar de mais
   // parâmetros nas funções de posicionamento.
   teamFluidity?: TeamFluidity;
+  // Coordenada livre (0-100%) escolhida pelo usuário na tela de Tática —
+  // ver src/game/tactics.ts (SlotSpec.x/y). Ausente pra times sem lineup
+  // customizado (IA), que caem pro layout estático do template
+  // (slotCoords em formation-layout.ts) dentro de live-positions.ts.
+  posX?: number;
+  posY?: number;
 }
 
 export interface MatchResult {

@@ -326,9 +326,20 @@ export function attributesOverall(position: "GK" | "DEF" | "MID" | "FWD", a: Pla
 const POSITION_WEIGHTS: Record<string, Weighted[]> = {
   GOL: GK_WEIGHTS,
   ZAG: DEF_WEIGHTS,
+  // LD/LE, ALD/ALE, MD/ME e PD/PE têm o MESMO peso dos dois lados — só a
+  // direção que muda, não o perfil de atributo. Antes só o lado D estava
+  // definido aqui (L caía no fallback genérico de 50, ignorando o atributo
+  // real do jogador — achado ao mexer nessa tabela pra adicionar Ala).
   LD: [
     ["tackling", 2], ["marking", 1.5], ["pace", 2], ["stamina", 1.5], ["crossing", 2],
     ["work_rate", 1.5], ["positioning", 1.5], ["decisions", 1], ["acceleration", 1.5], ["dribbling", 1],
+  ],
+  // Ala (wing-back) — mais ofensivo/resistente que o lateral, nota própria no
+  // CSV do Genie Scout ("A E"/"A D", distinta de "D E"/"D D"). Mesmo perfil de
+  // LD, com menos peso em marcação/desarme e mais em cruzamento/resistência.
+  ALD: [
+    ["crossing", 2], ["stamina", 2.5], ["pace", 2], ["work_rate", 2], ["dribbling", 1.5],
+    ["tackling", 1], ["marking", 0.75], ["acceleration", 1.5], ["decisions", 1], ["technique", 1],
   ],
   VOL: [
     ["tackling", 2], ["marking", 1.5], ["positioning", 2], ["passing", 2], ["stamina", 1.5],
@@ -349,6 +360,10 @@ const POSITION_WEIGHTS: Record<string, Weighted[]> = {
   ],
   CA: FWD_WEIGHTS,
 };
+POSITION_WEIGHTS.LE = POSITION_WEIGHTS.LD;
+POSITION_WEIGHTS.ALE = POSITION_WEIGHTS.ALD;
+POSITION_WEIGHTS.ME = POSITION_WEIGHTS.MD;
+POSITION_WEIGHTS.PE = POSITION_WEIGHTS.PD;
 POSITION_WEIGHTS.LE = POSITION_WEIGHTS.LD;
 POSITION_WEIGHTS.ME = POSITION_WEIGHTS.MD;
 POSITION_WEIGHTS.PE = POSITION_WEIGHTS.PD;
@@ -537,10 +552,16 @@ export function deriveAttributesFromRoles(
 ): PlayerAttributes {
   const rng = seededRng(seed);
   const level = overall / 5; // -> escala 1-20
-  // Base um pouco abaixo do nível: os atributos que o perfil realmente puxa
-  // chegam aos 18-20 pelos impulsos abaixo; o resto fica espalhado em vez de
-  // tudo encostar no teto (um craque no FM tem 3-5 atributos em 20, não 12).
-  const base = generateAttributes(position, level - 1.4, rng);
+  // Base BEM abaixo do nível: generateAttributes() já dá +2.5 sozinho pros
+  // atributos "primary" da posição base (GK/DEF/MID/FWD, ~9 chaves cada) —
+  // com offset raso aqui isso sozinho já encostava perto de 20 ANTES do
+  // impulso por eixo (A/C/D/W) abaixo rodar, e os dois pulsos se somavam nos
+  // MESMOS atributos (ex.: eixo "A" de atacante e o primary de FWD
+  // compartilham finishing/off_the_ball/technique/first_touch). Achado real
+  // (15/09/2026): simulação mostrava 9-13 atributos em 20 até pra overall 70,
+  // bem acima da própria meta documentada aqui (3-5 num craque). Offset mais
+  // fundo deixa o impulso por eixo ser quem realmente decide o que fica alto.
+  const base = generateAttributes(position, level - 3.6, rng);
   if (position === "GK") return generateAttributes(position, level, rng); // goleiro: geração por posição já cobre bem
 
   // As notas de habilidade por posição do FM sobem TODAS junto com a qualidade
@@ -569,7 +590,13 @@ export function deriveAttributesFromRoles(
   const Draw = Math.max(dev(roles.cb), dev(roles.fb) * 0.7, dev(roles.dm) * 0.65) - A * 0.6;
   const D = Math.max(-0.7, Draw) * gate.D;
 
-  const b = (v: number, axis: number, k: number) => clamp(v + axis * k);
+  // Fator global no impulso por eixo — achado real (15/09/2026, simulação):
+  // sem isso, um perfil bem especializado (eixo perto de 1) somado ao base já
+  // alto empurrava 9+ atributos pro teto até em overall mediano. Ajustado por
+  // tentativa contra scripts/_sim-attrs.ts até bater a meta documentada
+  // acima (craque = 3-5 em 20, não a base inteira).
+  const AXIS_SCALE = 0.4;
+  const b = (v: number, axis: number, k: number) => clamp(v + axis * k * AXIS_SCALE);
   const a: PlayerAttributes = { ...base };
 
   a.finishing = b(a.finishing, A, 6);

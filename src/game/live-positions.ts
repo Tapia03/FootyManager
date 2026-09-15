@@ -401,7 +401,11 @@ interface PosCtx {
 }
 
 function baseFor(ctx: PosCtx, l: MatchLineupEntry) {
-  const b = slotCoords(ctx.formation, l.slot);
+  // Tática livre: se a escalação carrega a coordenada real que o usuário
+  // arrastou na tela de Tática, o replay usa ELA em vez do ponto genérico do
+  // template — só cai pro layout estático quando o time nunca passou por lá
+  // (IA, ou partida salva antes desse campo existir).
+  const b = (l.posX != null && l.posY != null) ? { x: l.posX, y: l.posY } : slotCoords(ctx.formation, l.slot);
   return { x: b.x, y: ctx.side === "home" ? b.y : 100 - b.y };
 }
 

@@ -14,9 +14,11 @@ import {
   ATTRIBUTE_GROUPS, ATTRIBUTE_LABEL, radarScores, attributeTone, playerScoutingNotes,
   type AttributeKey, type PlayerAttributes,
 } from "@/game/attributes";
-import { familiarityFor } from "@/game/tactics";
+import { familiarityFor, roleFitStars } from "@/game/tactics";
+import { rolesForPosition, type RoleDef } from "@/game/roles";
+import { Star } from "lucide-react";
 import { marketTrendFromForm } from "@/game/valuation";
-import { GRANULAR_POSITIONS, positionLabel } from "@/game/types";
+import { GRANULAR_POSITIONS, positionLabel, type GranularPosition } from "@/game/types";
 import { clubColors, contrastText } from "@/game/club-colors";
 import { NationalityFlag } from "@/components/nationality-flag";
 import { ClubCrest } from "@/components/club-crest";
@@ -369,34 +371,63 @@ function PlayerDetail() {
         </Card>
       )}
 
-      {/* Posições — quais ele joga e quão bem, estilo FM. `familiarityFor` já
-          mistura progresso real (partidas jogadas) com a aptidão por atributo
-          quando não há progresso registrado ainda (ver tactics.ts). */}
-      {attrKnown && (
-        <Card className="p-5">
-          <h3 className="mb-3 font-semibold">Posições</h3>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-            {GRANULAR_POSITIONS.map((pos) => {
-              const fam = familiarityFor({ ...p, attributes: viewAttrs as unknown as PlayerAttributes }, pos);
-              const isNatural = (p.natural_position ?? p.position) === pos;
-              return (
-                <div
-                  key={pos}
-                  className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${
-                    isNatural ? "border-primary/50 bg-primary/5" : "border-border"
-                  }`}
-                >
-                  <span className={isNatural ? "font-semibold text-primary" : ""}>
-                    {positionLabel(pos)}
-                    {isNatural && " ★"}
-                  </span>
-                  <RatingBadge value={fam.progress} />
+      {/* Posições e funções — quais ele joga e quão bem, estilo FM.
+          `familiarityFor` já mistura progresso real (partidas jogadas) com
+          secondary_positions/aptidão por atributo quando não há progresso
+          registrado ainda (ver tactics.ts::fallbackProgress) — cobre tanto
+          quem já atuou na posição quanto quem só tem a nota do CSV. */}
+      {attrKnown && (() => {
+        const playerForFit = { ...p, attributes: viewAttrs as unknown as PlayerAttributes };
+        const byRoleKey = new Map<string, { pos: GranularPosition; role: RoleDef; stars: number }>();
+        for (const pos of GRANULAR_POSITIONS) {
+          for (const role of rolesForPosition(pos)) {
+            const stars = roleFitStars(playerForFit, role, pos);
+            const prev = byRoleKey.get(role.key);
+            if (!prev || stars > prev.stars) byRoleKey.set(role.key, { pos, role, stars });
+          }
+        }
+        const topRolesSorted = [...byRoleKey.values()].sort((a, b) => b.stars - a.stars).slice(0, 8);
+
+        return (
+          <Card className="p-5">
+            <h3 className="mb-3 font-semibold">Posições</h3>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+              {GRANULAR_POSITIONS.map((pos) => {
+                const fam = familiarityFor(playerForFit, pos);
+                const isNatural = (p.natural_position ?? p.position) === pos;
+                return (
+                  <div
+                    key={pos}
+                    className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${
+                      isNatural ? "border-primary/50 bg-primary/5" : "border-border"
+                    }`}
+                  >
+                    <span className={isNatural ? "font-semibold text-primary" : ""}>
+                      {positionLabel(pos)}
+                      {isNatural && " ★"}
+                    </span>
+                    <RatingBadge value={fam.progress} />
+                  </div>
+                );
+              })}
+            </div>
+
+            <h4 className="mb-2 mt-4 text-xs font-semibold text-muted-foreground">Melhores funções táticas</h4>
+            <div className="space-y-1">
+              {topRolesSorted.map(({ pos, role, stars }) => (
+                <div key={role.key} className="flex items-center justify-between gap-2 border-t border-border/50 pt-1.5 text-xs first:border-t-0 first:pt-0">
+                  <span>{role.label} <span className="text-muted-foreground">· {positionLabel(pos)}</span></span>
+                  <div className="flex shrink-0 gap-[1px]">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Star key={i} className={`size-3 ${i < stars ? "fill-warn text-warn" : "text-muted-foreground/30"}`} />
+                    ))}
+                  </div>
                 </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
+              ))}
+            </div>
+          </Card>
+        );
+      })()}
 
       {isMine && (() => {
         const injuryHistory = ((p.injury_history as InjuryHistoryEntry[] | null) ?? []).slice().reverse();

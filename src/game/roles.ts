@@ -72,11 +72,11 @@ const ROLE_FAMILIES: RoleFamily[] = [
     signature: ["tackling", "marking", "pace", "crossing"],
     desc: "Sobe pela linha pra apoiar o ataque e cruzar, sem abrir mão da marcação.",
     diagram: { x: 12, y: 96, dx: 10, dy: -40 } },
-  { key: "wb", label: "Ala", code: "WB", positions: ["LD", "LE"], duties: ["defend", "support", "attack"],
+  { key: "wb", label: "Ala", code: "WB", positions: ["ALD", "ALE"], duties: ["defend", "support", "attack"],
     signature: ["stamina", "crossing", "pace", "work_rate"],
     desc: "Ocupa toda a lateral como um ponta recuado — sobe e desce o jogo inteiro.",
     diagram: { x: 10, y: 100, dx: 14, dy: -56 } },
-  { key: "cwb", label: "Ala Completo", code: "CWB", positions: ["LD", "LE"], duties: ["support", "attack"],
+  { key: "cwb", label: "Ala Completo", code: "CWB", positions: ["ALD", "ALE"], duties: ["support", "attack"],
     signature: ["crossing", "dribbling", "pace", "technique"],
     desc: "O mais ofensivo dos laterais — vive no campo de ataque como um ponta de verdade.",
     diagram: { x: 10, y: 90, dx: 20, dy: -70 } },
@@ -275,6 +275,7 @@ export function rolesForPosition(pos: GranularPosition): RoleDef[] {
 // de pego "o primeiro da lista" (a ordem de ROLE_FAMILIES é só didática).
 const DEFAULT_ROLE_KEY: Record<GranularPosition, string> = {
   GOL: "gk_defend", ZAG: "cd_defend", LD: "fb_support", LE: "fb_support",
+  ALD: "wb_support", ALE: "wb_support",
   VOL: "dm_support", MC: "cm_support", MD: "wm_support", ME: "wm_support",
   MEI: "am_support", PD: "winger_support", PE: "winger_support", CA: "af_attack",
 };
