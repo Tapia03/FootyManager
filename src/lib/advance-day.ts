@@ -18,6 +18,7 @@ import { isRivalry, matchMoraleDelta } from "@/game/rivalries";
 import { checkReleaseClauses } from "./release-clauses";
 import { pushInbox, type InboxDraft } from "./inbox";
 import { evaluateMatchGoal, MATCH_GOAL_FORM_DELTA, matchGoalLabel, type PlayerMatchGoal } from "@/game/match-goals";
+import { bestMentorFor, mentoringSpeedMultiplier, isMenteeCandidate, type MentorLike } from "@/game/mentoring";
 
 const formatBRL = (n: number) =>
   Math.abs(n) >= 1_000_000 ? `R$ ${(n / 1_000_000).toFixed(1)}M`
@@ -218,6 +219,10 @@ export async function advanceDays(
           clubPlayers as any,
           (dateISO) => resolveWeeklyFocus(weekly, focus, dateISO),
           startDate, n, trainingSpeedMultiplier(coachSkill),
+          undefined,
+          (p) => isMenteeCandidate((p as any).age ?? 24)
+            ? mentoringSpeedMultiplier(bestMentorFor(p.id, clubPlayers as MentorLike[]))
+            : 1,
         );
         const patchById = new Map(patches.map((p) => [p.id, p]));
 
@@ -990,6 +995,10 @@ async function applyTrainingAndRecovery(myClubId: string, days: number, todayISO
     roster as any,
     (dateISO) => resolveWeeklyFocus(weekly, focus, dateISO),
     todayISO, days, trainingSpeedMultiplier(coachSkill) * ctFactor,
+    undefined,
+    (p) => isMenteeCandidate((p as any).age ?? 24)
+      ? mentoringSpeedMultiplier(bestMentorFor(p.id, roster as unknown as MentorLike[]))
+      : 1,
   );
   const patchById = new Map(patches.map((p) => [p.id, p]));
   const restDays = countRestDays(weekly, focus, todayISO, days);

@@ -18,6 +18,7 @@ import { familiarityFor, roleFitStars } from "@/game/tactics";
 import { rolesForPosition, type RoleDef } from "@/game/roles";
 import { Star } from "lucide-react";
 import { marketTrendFromForm } from "@/game/valuation";
+import { bestMentorFor, isMenteeCandidate, isMentorCandidate, type MentorLike } from "@/game/mentoring";
 import { GRANULAR_POSITIONS, positionLabel, type GranularPosition } from "@/game/types";
 import { clubColors, contrastText } from "@/game/club-colors";
 import { NationalityFlag } from "@/components/nationality-flag";
@@ -197,6 +198,16 @@ function PlayerDetail() {
 
   const marketTrend = marketTrendFromForm(p.form);
 
+  // Mentoria de jovens por veteranos (item 16 do backlog FootSim) — só faz
+  // sentido calcular pro MEU elenco (squadForCompare só carrega pra isso, ver
+  // acima); mostra "Mentor" pro jovem sendo mentorado, ou a lista de
+  // mentorados pro veterano em questão. Ver src/game/mentoring.ts.
+  const squad = (squadForCompare.data ?? []) as MentorLike[];
+  const myMentor = isMine && isMenteeCandidate(p.age) ? bestMentorFor(p.id, squad) : null;
+  const myMentees = isMine && isMentorCandidate(p as MentorLike)
+    ? squad.filter((s) => isMenteeCandidate(s.age) && bestMentorFor(s.id, squad)?.id === p.id)
+    : [];
+
   const kit = clubColors({
     id: p.club_id ?? p.id,
     primary_color: (p.clubs as any)?.primary_color,
@@ -244,6 +255,25 @@ function PlayerDetail() {
             <div className="fm-eyebrow">Overall</div>
             {isMine && p.potential != null && (
               <div className="mt-1 text-sm font-semibold text-info">Potencial {p.potential}</div>
+            )}
+            {myMentor && (
+              <div className="mt-1 text-xs text-muted-foreground" title="Veterano de liderança/determinação forte no elenco — acelera o desenvolvimento dele em treino.">
+                Mentor: <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: myMentor.id }} className="font-semibold text-foreground hover:underline">
+                  {(myMentor as any).name}
+                </Link>
+              </div>
+            )}
+            {myMentees.length > 0 && (
+              <div className="mt-1 text-xs text-muted-foreground" title="Jovens do elenco acelerando o desenvolvimento por causa da liderança/determinação dele.">
+                Mentorando: {myMentees.map((m, i) => (
+                  <span key={m.id}>
+                    {i > 0 && ", "}
+                    <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: m.id }} className="font-semibold text-foreground hover:underline">
+                      {(m as any).name}
+                    </Link>
+                  </span>
+                ))}
+              </div>
             )}
           </div>
         </div>

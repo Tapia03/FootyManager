@@ -172,6 +172,13 @@ export function applyTraining(
   days: number,
   speedMultiplier: number,
   rng: () => number = Math.random,
+  // Mentoria de jovens por veteranos (item 16 do backlog FootSim) — fator
+  // EXTRA por jogador além do speedMultiplier do clube (treinador/CT, igual
+  // pra todo mundo). Opcional/default neutro pra não quebrar nenhum
+  // chamador existente — ver bestMentorFor/mentoringSpeedMultiplier em
+  // src/game/mentoring.ts, calculado fora daqui (advance-day.ts) porque
+  // precisa olhar o elenco inteiro, não só o jogador sendo treinado.
+  individualMultiplier: (p: TrainablePlayer) => number = () => 1,
 ): TrainingPatch[] {
   const patches: TrainingPatch[] = [];
   for (const p of players) {
@@ -200,7 +207,7 @@ export function applyTraining(
       const mismatch = (dayFocus === "goalkeeping") !== (p.position === "GK");
       if (mismatch) continue;
 
-      const chancePerAttr = BASE_DAILY_CHANCE * ageFactor(p.age ?? 24) * speedMultiplier;
+      const chancePerAttr = BASE_DAILY_CHANCE * ageFactor(p.age ?? 24) * speedMultiplier * individualMultiplier(p);
       for (const attr of FOCUS_ATTRS[dayFocus]) {
         if (gainedAttrs.has(attr)) continue;
         const cur = p.attributes?.[attr] ?? 10;

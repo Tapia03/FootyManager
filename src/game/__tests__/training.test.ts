@@ -77,6 +77,31 @@ describe("applyTraining — dias de descanso não treinam nada e não rolam risc
   });
 });
 
+describe("applyTraining — individualMultiplier (mentoria, item 16 do backlog)", () => {
+  it("um multiplicador individual maior vira a chance de ganho de um 'quase' pra um 'sim'", () => {
+    // idade 20 → ageFactor 1.6; chance base = 0.02*1.6 = 0.032 (speedMultiplier=1).
+    // rng fixo em 0.05: sem mentor (mult=1) fica ACIMA da chance (sem ganho);
+    // com mentor (mult=2, chance=0.064) fica ABAIXO (ganha).
+    const fixedRng = () => 0.05;
+    const p = player({ id: "mentee", age: 20 });
+
+    const withoutMentor = applyTraining([p], () => "attack", "2026-01-04", 1, 1, fixedRng, () => 1);
+    expect(withoutMentor).toHaveLength(0);
+
+    const withMentor = applyTraining([p], () => "attack", "2026-01-04", 1, 1, fixedRng, () => 2);
+    expect(withMentor.length).toBeGreaterThan(0);
+    expect(Object.keys(withMentor[0].attrDeltas).length).toBeGreaterThan(0);
+  });
+
+  it("sem individualMultiplier informado, o comportamento é idêntico ao de antes (default neutro)", () => {
+    const fixedRng = () => 0.05;
+    const p = player({ id: "no-mentor", age: 20 });
+    const withDefault = applyTraining([p], () => "attack", "2026-01-04", 1, 1, fixedRng);
+    const withExplicitNeutral = applyTraining([p], () => "attack", "2026-01-04", 1, 1, fixedRng, () => 1);
+    expect(withDefault).toEqual(withExplicitNeutral);
+  });
+});
+
 describe("applyTraining — dias de treino de verdade evoluem atributo", () => {
   it("um jogador jovem com rng favorável ganha pelo menos um atributo do foco em vários dias de treino", () => {
     // 0.01 fica ACIMA de qualquer risco de lesão configurado (no máximo
