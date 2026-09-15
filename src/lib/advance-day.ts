@@ -10,7 +10,7 @@ import { refreshTransferOffers } from "./transfer-offers";
 import { advanceScouting } from "./scouting";
 import { applyTraining, resolveWeeklyFocus, countRestDays, REST_DAY_REGEN_BONUS } from "@/game/training";
 import { conditionRegenPerDay, trainingSpeedMultiplier } from "@/game/staff";
-import { simulateAITransferActivity } from "./ai-transfers";
+import { simulateAITransferActivity, generateTransferRumor } from "./ai-transfers";
 import { refreshJobOffers } from "./job-offers";
 import { refreshTransferRequests } from "./transfer-requests";
 import { processLoanReturns } from "./loans";
@@ -25,7 +25,7 @@ const formatBRL = (n: number) =>
   Math.abs(n) >= 1_000_000 ? `R$ ${(n / 1_000_000).toFixed(1)}M`
   : Math.abs(n) >= 1_000 ? `R$ ${(n / 1_000).toFixed(0)}k`
   : `R$ ${Math.round(n)}`;
-import { sponsorIncome, gateIncome, facilityFactor, fanTemperamentFromClubId } from "@/game/board";
+import { sponsorIncome, gateIncome, facilityFactor, fanTemperamentFromClubId, membershipIncome } from "@/game/board";
 import { pickAiMatchTactics } from "@/game/ai-tactics";
 import { adjustMarketValue, applyFormMarketMomentum } from "@/game/valuation";
 
@@ -676,7 +676,7 @@ export async function advanceDays(
   }
   if (paydays.length > 0 || sponsorDays.length > 0) {
     const [{ data: allClubsRaw }, { data: allPlayerWages }, { data: allStaffWages }] = await Promise.all([
-      supabase.from("clubs").select("id, reputation, competition_id").eq("save_id", saveId),
+      supabase.from("clubs").select("id, reputation, competition_id, stadium_capacity").eq("save_id", saveId),
       supabase.from("players").select("club_id, wage").eq("save_id", saveId),
       supabase.from("staff").select("club_id, wage").eq("save_id", saveId),
     ]);
@@ -718,6 +718,21 @@ export async function advanceDays(
           }
         }
         clubBudgetDelta.set(c.id, (clubBudgetDelta.get(c.id) ?? 0) + income * sponsorDays.length);
+
+        // Sócio-torcedor (item 18 do backlog FootSim) — mensalidade recorrente
+        // que não depende de jogo em casa, no mesmo dia 1 do patrocínio.
+        const membership = membershipIncome(
+          c.stadium_capacity ?? 20_000, c.reputation ?? 50, fanTemperamentFromClubId(c.id),
+        );
+        if (c.id === myClubId) {
+          for (const iso of sponsorDays) {
+            financeEntries.push({
+              save_id: saveId, club_id: myClubId, entry_date: iso,
+              kind: "membership", amount: membership, description: "Mensalidade de sócio-torcedor",
+            });
+          }
+        }
+        clubBudgetDelta.set(c.id, (clubBudgetDelta.get(c.id) ?? 0) + membership * sponsorDays.length);
       }
     }
   }
@@ -797,9 +812,18 @@ export async function advanceDays(
   // de falhar em silêncio), não pode travar o resto do avanço de dia
   // (calendário, folha, sondagens etc.), mesmo padrão de checkReleaseClauses.
   try {
-    await simulateAITransferActivity(saveId, myClubId);
+    await simulateAITransferActivity(saveId, myClubId, endISO);
   } catch (e) {
     console.error("simulateAITransferActivity falhou", e);
+  }
+
+  // Rumor de mercado sobre jogador do usuário (item 19 do backlog FootSim) —
+  // especulação sem negociação real por trás, ver generateTransferRumor em
+  // src/lib/ai-transfers.ts. Mesmo padrão não-propagante das chamadas acima.
+  try {
+    await generateTransferRumor(saveId, myClubId, endISO);
+  } catch (e) {
+    console.error("generateTransferRumor falhou", e);
   }
 
   // Avança o chaveamento da copa (se existir): resolve confrontos cujas

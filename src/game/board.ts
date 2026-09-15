@@ -343,6 +343,37 @@ const TEMPERAMENT_OCCUPANCY: Record<FanTemperament, OccupancyProfile> = {
 };
 
 // -----------------------------------------------------------------------------
+// Sócio-torcedor (item 18 do backlog FootSim) — mensalidade recorrente que
+// NÃO depende de jogo em casa (ao contrário da bilheteria em gateIncome
+// abaixo, que só paga em dia de jogo), lançada junto do patrocínio (dia 1 do
+// mês, ver src/lib/advance-day.ts). Escopo honesto do card: "sócio-torcedor +
+// merchandising + gestão comercial da torcida" virou só a mensalidade —
+// merchandising/loja exigiria um catálogo de produto próprio, fora do que os
+// dials atuais do clube sustentam.
+//
+// Reaproveita capacidade do estádio (proxy de tamanho de torcida, mesma
+// coluna já usada em gateIncome) e a personalidade da torcida do item 13:
+// torcida apaixonada assina fiel mesmo sem o time jogar bem, exigente adere
+// pouco. Calibrado pra ficar bem abaixo do patrocínio (~15-25% dele pro
+// clube mediano da base real) — reforço real, não substituto da renda
+// principal.
+// -----------------------------------------------------------------------------
+const MEMBERSHIP_MONTHLY_FEE = 25; // R$/sócio/mês
+
+const TEMPERAMENT_MEMBERSHIP_RATE: Record<FanTemperament, number> = {
+  apaixonada: 0.28, tradicional: 0.18, exigente: 0.09,
+};
+
+export function membershipIncome(
+  stadiumCapacity: number, clubReputation: number, temperament: FanTemperament = "tradicional",
+): number {
+  const rate = TEMPERAMENT_MEMBERSHIP_RATE[temperament];
+  const reputationFactor = clamp(0.5 + clubReputation / 100, 0.5, 1.5);
+  const members = Math.round(stadiumCapacity * rate * reputationFactor);
+  return members * MEMBERSHIP_MONTHLY_FEE;
+}
+
+// -----------------------------------------------------------------------------
 // Bilheteria — antes era um valor fixo aleatório igual pra qualquer clube;
 // agora depende da capacidade real do estádio (já existe em clubs.stadium_capacity,
 // só nunca tinha sido usada) e da reputação (público maior em clube grande),

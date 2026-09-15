@@ -37,7 +37,7 @@ function Finances() {
 
   const kindLabel: Record<string, string> = {
     wages: "Salários", gate: "Bilheteria", transfer_in: "Contratação", transfer_out: "Venda",
-    sponsor: "Patrocínio", board_grant: "Aporte da diretoria", other: "Outros",
+    sponsor: "Patrocínio", membership: "Sócio-torcedor", board_grant: "Aporte da diretoria", other: "Outros",
   };
 
   return (

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   generateObjective, objectiveLabel, evaluateObjective, confidenceDelta, managerReputationDelta,
-  sponsorObjectiveBonus, fanTemperamentFromClubId, gateIncome, FAN_TEMPERAMENT_LABEL,
+  sponsorObjectiveBonus, fanTemperamentFromClubId, gateIncome, FAN_TEMPERAMENT_LABEL, membershipIncome,
 } from "../board";
 
 const LEAGUE_SIZE = 20;
@@ -161,5 +161,34 @@ describe("gateIncome — personalidade da torcida muda a curva de ocupação", (
     const semTemperamento = gateIncome(50_000, 60, false, () => 0.5);
     const tradicional = gateIncome(50_000, 60, false, () => 0.5, "tradicional");
     expect(semTemperamento).toEqual(tradicional);
+  });
+});
+
+describe("membershipIncome — item 18 do backlog FootSim", () => {
+  it("torcida apaixonada rende mais sócio que exigente, pro mesmo clube", () => {
+    const apaixonada = membershipIncome(50_000, 60, "apaixonada");
+    const exigente = membershipIncome(50_000, 60, "exigente");
+    expect(apaixonada).toBeGreaterThan(exigente);
+  });
+  it("clube de reputação maior tem mais renda de sócio, pra mesma capacidade/personalidade", () => {
+    const forte = membershipIncome(50_000, 90, "tradicional");
+    const fraco = membershipIncome(50_000, 30, "tradicional");
+    expect(forte).toBeGreaterThan(fraco);
+  });
+  it("estádio maior rende mais renda de sócio, pra mesma reputação/personalidade", () => {
+    const grande = membershipIncome(60_000, 60, "tradicional");
+    const pequeno = membershipIncome(15_000, 60, "tradicional");
+    expect(grande).toBeGreaterThan(pequeno);
+  });
+  it("sem personalidade informada, usa a curva tradicional (mesmo padrão de gateIncome)", () => {
+    expect(membershipIncome(50_000, 60)).toBe(membershipIncome(50_000, 60, "tradicional"));
+  });
+  it("fica na ordem de grandeza de uma renda complementar, não substitui o patrocínio", () => {
+    // clube mediano da base real (capacidade ~25k, reputação ~60) — ver
+    // src/game/board.ts pra calibração completa contra o patrocínio.
+    const membership = membershipIncome(25_000, 60, "tradicional");
+    const sponsor = 60 * 12_000; // sponsorIncome(60), sem importar pra não criar dependência circular no teste
+    expect(membership).toBeGreaterThan(sponsor * 0.1);
+    expect(membership).toBeLessThan(sponsor * 0.5);
   });
 });
