@@ -51,3 +51,8 @@ dist-ssr
 # seed-fm24.json de sempre). Regenerável a qualquer momento contra os CSVs
 # do usuário.
 data/football-db/
+
+# CSVs brutos do FM Genie Scout (CLUBES.csv/JOGADORES.csv, uso pessoal
+# licenciado do usuário) — guardados aqui só pra referência/regeneração
+# local, mesmo motivo de data/football-db/ nunca ser commitado.
+data/fm-csv-source/

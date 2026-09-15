@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { ClubCrest } from "@/components/club-crest";
+import { PlayerFace } from "@/components/player-face";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatMoney } from "@/lib/game-hooks";
@@ -90,7 +91,7 @@ function Market() {
     queryFn: async () => {
       let query = supabase
         .from("players")
-        .select("id, name, age, position, overall, market_value, wage, club_id, scout_knowledge, nationality, clubs!players_club_id_fkey(id, name, short_name, reputation, primary_color, secondary_color, crest_url)")
+        .select("id, name, age, position, overall, market_value, wage, club_id, scout_knowledge, nationality, face_url, clubs!players_club_id_fkey(id, name, short_name, reputation, primary_color, secondary_color, crest_url)")
         .eq("save_id", saveId)
         .neq("club_id", myClubId!)
         // Agente livre (club_id null) tem seção própria mais abaixo — sem
@@ -117,7 +118,7 @@ function Market() {
     queryFn: async () => {
       let query = supabase
         .from("players")
-        .select("id, name, age, position, overall, wage, attributes, nationality")
+        .select("id, name, age, position, overall, wage, attributes, nationality, face_url")
         .eq("save_id", saveId)
         .is("club_id", null)
         .order("overall", { ascending: false })
@@ -419,8 +420,8 @@ function Market() {
             {freeAgents.data.map((p: any) => (
               <div key={p.id} className="flex flex-wrap items-center gap-2 border rounded-md p-2">
                 <div className="min-w-[180px] flex-1 text-sm">
-                  <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="font-medium hover:underline">
-                    {p.name}
+                  <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="font-medium hover:underline inline-flex items-center gap-1.5">
+                    <PlayerFace player={p} className="w-6 h-6 shrink-0" /> {p.name}
                   </Link>
                   <span className="text-xs text-muted-foreground">
                     {" "}
@@ -494,7 +495,8 @@ function Market() {
               return (
                 <tr key={p.id} className="border-b border-border/50 hover:bg-elevated/50">
                   <td className="px-3 py-2 font-medium">
-                    <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="hover:underline">
+                    <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="hover:underline inline-flex items-center gap-1.5">
+                      <PlayerFace player={p} className="w-6 h-6 shrink-0" />
                       <NationalityFlag nationality={p.nationality} /> {p.name}
                     </Link>
                   </td>

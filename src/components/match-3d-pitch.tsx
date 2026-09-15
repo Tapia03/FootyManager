@@ -1,5 +1,6 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import * as THREE from "three";
+import { hashStr, SKIN_TONES, HAIR_COLORS } from "@/game/player-appearance";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
@@ -123,15 +124,9 @@ function toHex(color: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-// Hash determinístico de string → [0,1) — usado pra variar pele/cabelo por
-// jogador (o mesmo id sempre gera o mesmo boneco).
-function hashStr(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
-  return ((h >>> 0) % 100000) / 100000;
-}
-const SKIN_TONES = [0xf1c9a5, 0xe0ac82, 0xc68642, 0x8d5524, 0x5c3a21];
-const HAIR_COLORS = [0x1c1917, 0x2b2b2b, 0x4b3621, 0x6b4a2f, 0x8d6e4c, 0xb08d57, 0x2a2a2a];
+// hashStr/SKIN_TONES/HAIR_COLORS agora vêm de src/game/player-appearance.ts
+// (compartilhado com o retrato 2D em src/components/player-face.tsx — o
+// mesmo jogador tem a mesma pele/cabelo nos dois lugares).
 
 // Número na canvas → textura pra colar nas costas da camisa.
 function makeNumberTexture(num: number, dark: boolean): THREE.CanvasTexture {

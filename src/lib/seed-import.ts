@@ -13,6 +13,11 @@ import { assignSquadNumbers } from "@/game/squad-numbers";
 //  - nenhum dos dois: cai em generateAttributes(posição, overall)
 
 export interface SeedPlayer {
+  // Presente só na base "padrão" — é o "ID Único" do jogador no Genie Scout
+  // (JOGADORES.csv), chave estável pra casar foto real (scripts/
+  // import-player-faces.mjs), mesmo princípio de SeedClub.id abaixo.
+  // importSeed() nunca lê isso, é só um campo de passagem inofensivo.
+  id?: string | number;
   name: string;
   age: number;
   position: string;
@@ -32,6 +37,9 @@ export interface SeedPlayer {
   nationality?: string | null; birth_date?: string | null;
   international_caps?: number | null; international_goals?: number | null;
   club_since?: string | null; release_clause?: number | null;
+  // Foto real, via scripts/import-player-faces.mjs (mesmo princípio de
+  // SeedClub.crest_url) — ausente = fallback procedural no cliente.
+  face_url?: string | null;
 }
 
 export interface SeedClub {
@@ -258,6 +266,7 @@ export async function importSeed(
         international_goals: p.international_goals ?? 0,
         club_since: p.club_since ?? null,
         release_clause: p.release_clause ?? null,
+        face_url: p.face_url ?? null,
       });
     });
   });

@@ -15,6 +15,7 @@ import { marketTrendFromForm } from "@/game/valuation";
 import { suggestNumberUpgrades, type NumberUpgradeSuggestion } from "@/game/squad-numbers";
 import { NationalityFlag } from "@/components/nationality-flag";
 import { ClubCrest } from "@/components/club-crest";
+import { PlayerFace } from "@/components/player-face";
 import { PageHeader, SubTabs, Pill, RatingBadge, EmptyState, type Tone } from "@/components/fm";
 import { DressingRoomView } from "@/components/dressing-room-view";
 import { Users, Search, RefreshCw, ArrowDownUp, Shirt } from "lucide-react";
@@ -287,8 +288,9 @@ function Squad() {
                       <Link
                         to="/saves/$saveId/players/$playerId"
                         params={{ saveId, playerId: p.id }}
-                        className="font-medium hover:text-primary hover:underline"
+                        className="font-medium hover:text-primary hover:underline inline-flex items-center gap-2"
                       >
+                        <PlayerFace player={p} className="w-7 h-7 shrink-0" />
                         {p.name}
                       </Link>
                       {p.loaned_from_club_id && (

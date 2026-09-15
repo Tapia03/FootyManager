@@ -405,6 +405,10 @@ export function buildClubsAndPlayers(csvDir) {
     const capGoals = num(r[pId("Gols Internacionais")]);
 
     club.players.push({
+      // "ID Único" do jogador (JOGADORES.csv) — mesmo princípio do id de
+      // clube (ver acima), chave estável pra casar foto real de jogador
+      // (scripts/import-player-faces.mjs) igual já funciona pra escudo.
+      id: digits(r[pId("ID Único")]),
       name, age, position: base,
       natural_position: natural, secondary_positions: [],
       role_scores: roleScores(ratingVals),

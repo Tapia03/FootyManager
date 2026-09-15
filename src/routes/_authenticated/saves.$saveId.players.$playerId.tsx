@@ -20,6 +20,7 @@ import { GRANULAR_POSITIONS, positionLabel } from "@/game/types";
 import { clubColors, contrastText } from "@/game/club-colors";
 import { NationalityFlag } from "@/components/nationality-flag";
 import { ClubCrest } from "@/components/club-crest";
+import { PlayerFace } from "@/components/player-face";
 import { RadarChart, Pill, ProsConsList, RatingBadge } from "@/components/fm";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -200,7 +201,6 @@ function PlayerDetail() {
     secondary_color: (p.clubs as any)?.secondary_color,
   });
   const kitText = contrastText(kit.primary);
-  const initials = String(p.name).split(" ").map((w: string) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 
   return (
     <div className="space-y-4">
@@ -209,11 +209,16 @@ function PlayerDetail() {
       <Card className="p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3.5">
-            <div
-              className="grid size-14 shrink-0 place-items-center rounded-2xl border-2 border-white/15 font-display text-lg font-bold shadow-sm"
-              style={{ backgroundColor: kit.primary, color: kitText }}
-            >
-              {p.squad_number ?? initials}
+            <div className="relative shrink-0">
+              <PlayerFace player={p} className="size-14 border-2 border-white/15 shadow-sm" />
+              {p.squad_number != null && (
+                <div
+                  className="absolute -bottom-1.5 -right-1.5 grid size-6 place-items-center rounded-full border-2 border-background text-[11px] font-display font-bold"
+                  style={{ backgroundColor: kit.primary, color: kitText }}
+                >
+                  {p.squad_number}
+                </div>
+              )}
             </div>
             <div>
               <h2 className="font-display text-2xl font-bold tracking-tight">{p.name}</h2>
