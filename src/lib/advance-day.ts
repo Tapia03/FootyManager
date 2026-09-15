@@ -19,6 +19,7 @@ import { checkReleaseClauses } from "./release-clauses";
 import { pushInbox, type InboxDraft } from "./inbox";
 import { evaluateMatchGoal, MATCH_GOAL_FORM_DELTA, matchGoalLabel, type PlayerMatchGoal } from "@/game/match-goals";
 import { bestMentorFor, mentoringSpeedMultiplier, isMenteeCandidate, type MentorLike } from "@/game/mentoring";
+import { trainingMultiplierForTier } from "@/game/squad-tiers";
 
 const formatBRL = (n: number) =>
   Math.abs(n) >= 1_000_000 ? `R$ ${(n / 1_000_000).toFixed(1)}M`
@@ -220,9 +221,12 @@ export async function advanceDays(
           (dateISO) => resolveWeeklyFocus(weekly, focus, dateISO),
           startDate, n, trainingSpeedMultiplier(coachSkill),
           undefined,
-          (p) => isMenteeCandidate((p as any).age ?? 24)
-            ? mentoringSpeedMultiplier(bestMentorFor(p.id, clubPlayers as MentorLike[]))
-            : 1,
+          (p) => {
+            const mentorMul = isMenteeCandidate((p as any).age ?? 24)
+              ? mentoringSpeedMultiplier(bestMentorFor(p.id, clubPlayers as MentorLike[]))
+              : 1;
+            return mentorMul * trainingMultiplierForTier((p as any).squad_tier);
+          },
         );
         const patchById = new Map(patches.map((p) => [p.id, p]));
 
@@ -979,7 +983,7 @@ async function applyTrainingAndRecovery(myClubId: string, days: number, todayISO
     supabase.from("clubs").select("training_focus, weekly_training, training_facilities").eq("id", myClubId).single() as any,
     supabase.from("staff").select("role, skill").eq("club_id", myClubId),
     supabase.from("players").select(
-      "id, name, age, position, condition, attributes, overall, market_value, individual_training_focus, injured_until, injury_history",
+      "id, name, age, position, condition, attributes, overall, market_value, individual_training_focus, injured_until, injury_history, squad_tier",
     ).eq("club_id", myClubId),
   ]);
   if (!roster || roster.length === 0) return [];
@@ -996,9 +1000,12 @@ async function applyTrainingAndRecovery(myClubId: string, days: number, todayISO
     (dateISO) => resolveWeeklyFocus(weekly, focus, dateISO),
     todayISO, days, trainingSpeedMultiplier(coachSkill) * ctFactor,
     undefined,
-    (p) => isMenteeCandidate((p as any).age ?? 24)
-      ? mentoringSpeedMultiplier(bestMentorFor(p.id, roster as unknown as MentorLike[]))
-      : 1,
+    (p) => {
+      const mentorMul = isMenteeCandidate((p as any).age ?? 24)
+        ? mentoringSpeedMultiplier(bestMentorFor(p.id, roster as unknown as MentorLike[]))
+        : 1;
+      return mentorMul * trainingMultiplierForTier((p as any).squad_tier);
+    },
   );
   const patchById = new Map(patches.map((p) => [p.id, p]));
   const restDays = countRestDays(weekly, focus, todayISO, days);

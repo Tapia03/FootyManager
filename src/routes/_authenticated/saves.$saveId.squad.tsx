@@ -13,6 +13,7 @@ import { proposeLoanOut, recallLoan, exerciseLoanBuyOption } from "@/lib/loans";
 import { loanOutProgress } from "@/game/loan-status";
 import { marketTrendFromForm } from "@/game/valuation";
 import { suggestNumberUpgrades, type NumberUpgradeSuggestion } from "@/game/squad-numbers";
+import { SQUAD_TIER_LABELS, type SquadTier } from "@/game/squad-tiers";
 import { NationalityFlag } from "@/components/nationality-flag";
 import { ClubCrest } from "@/components/club-crest";
 import { PlayerFace } from "@/components/player-face";
@@ -43,6 +44,7 @@ function Squad() {
   const [filter, setFilter] = useState("");
   const [sort, setSort] = useState<SortKey>("overall");
   const [posFilter, setPosFilter] = useState<string>("ALL");
+  const [tierFilter, setTierFilter] = useState<"ALL" | SquadTier>("ALL");
   const [view, setView] = useState<"list" | "room" | "contracts" | "loans">("list");
 
   const save = useQuery({
@@ -132,9 +134,23 @@ function Squad() {
     onError: (e: any) => toast.error(e.message ?? "Falha ao trocar número"),
   });
 
+  // Equipes B / elenco reserva (item 15 do backlog FootSim) — contagem pro
+  // badge do filtro + mutation de mover jogador entre os dois tiers, sempre
+  // por escolha do técnico (nunca automática).
+  const bTeamCount = useMemo(() => all.filter((p) => p.squad_tier === "b_team").length, [all]);
+  const setTier = useMutation({
+    mutationFn: async ({ playerId, tier }: { playerId: string; tier: SquadTier }) => {
+      const { error } = await supabase.from("players").update({ squad_tier: tier } as any).eq("id", playerId);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["players", clubId] }),
+    onError: (e: any) => toast.error(e.message ?? "Falha ao mover jogador"),
+  });
+
   const filtered = useMemo(() => {
     let list = [...all];
     if (posFilter !== "ALL") list = list.filter((p) => p.position === posFilter);
+    if (tierFilter !== "ALL") list = list.filter((p) => (p.squad_tier ?? "first_team") === tierFilter);
     if (filter) {
       const f = filter.toLowerCase();
       list = list.filter((p) => p.name.toLowerCase().includes(f) || (p.nationality ?? "").toLowerCase().includes(f));
@@ -145,7 +161,7 @@ function Squad() {
       return String(av).localeCompare(String(bv));
     });
     return list;
-  }, [all, filter, sort, posFilter]);
+  }, [all, filter, sort, posFilter, tierFilter]);
 
   const COLS: { key: SortKey; label: string; align?: "right" }[] = [
     { key: "name", label: "Jogador" },
@@ -162,7 +178,7 @@ function Squad() {
       <PageHeader
         icon={Users}
         title="Elenco"
-        subtitle={`${counts.ALL} jogadores · ${counts.GK} GK · ${counts.DEF} DEF · ${counts.MID} MID · ${counts.FWD} FWD`}
+        subtitle={`${counts.ALL} jogadores · ${counts.GK} GK · ${counts.DEF} DEF · ${counts.MID} MID · ${counts.FWD} FWD${bTeamCount ? ` · ${bTeamCount} na Equipe B` : ""}`}
         actions={
           view === "list" ? (
             <div className="relative">
@@ -242,6 +258,15 @@ function Squad() {
           { value: "FWD", label: "Ataque", badge: counts.FWD },
         ]}
       />
+      <SubTabs
+        value={tierFilter}
+        onValueChange={setTierFilter as (v: string) => void}
+        tabs={[
+          { value: "ALL", label: "Elenco inteiro" },
+          { value: "first_team", label: "Elenco principal", badge: all.length - bTeamCount },
+          { value: "b_team", label: "Equipe B", badge: bTeamCount || undefined },
+        ]}
+      />
 
       <Card className="overflow-hidden p-0">
         <div className="overflow-x-auto">
@@ -307,6 +332,11 @@ function Squad() {
                     </td>
                     <td className="px-3 py-2">
                       <Pill tone={POS_TONE[p.position] ?? "neutral"}>{positionLabel(p.natural_position ?? p.position)}</Pill>
+                      {p.squad_tier === "b_team" && (
+                        <Pill tone="neutral" className="ml-1" title="Treina com bônus de velocidade (minutos regulares na Equipe B)">
+                          Equipe B
+                        </Pill>
+                      )}
                       {p.secondary_positions?.length > 0 && (
                         <span className="ml-1 text-[11px] text-muted-foreground">
                           {p.secondary_positions.map(positionLabel).join(" ")}
@@ -322,15 +352,25 @@ function Squad() {
                     <td className="px-3 py-2"><Pill tone={mor.tone}>{mor.label}</Pill></td>
                     <td className="px-3 py-2"><ContractBadge contractUntil={p.contract_until} today={todayISO} /></td>
                     <td className="px-3 py-2">
-                      {p.loan_buy_option != null ? (
-                        <Button size="sm" variant="outline" onClick={() => buyOut.mutate(p.id)} disabled={buyOut.isPending}>
-                          Comprar ({formatMoney(p.loan_buy_option)})
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {p.loan_buy_option != null ? (
+                          <Button size="sm" variant="outline" onClick={() => buyOut.mutate(p.id)} disabled={buyOut.isPending}>
+                            Comprar ({formatMoney(p.loan_buy_option)})
+                          </Button>
+                        ) : !p.loaned_from_club_id ? (
+                          <Button size="sm" variant="outline" onClick={() => loanOut.mutate(p.id)} disabled={loanOut.isPending}>
+                            Emprestar
+                          </Button>
+                        ) : null}
+                        <Button
+                          size="sm" variant="ghost"
+                          title={p.squad_tier === "b_team" ? "Promover pro elenco principal" : "Mover pra Equipe B — minutos regulares, treina com bônus de velocidade"}
+                          onClick={() => setTier.mutate({ playerId: p.id, tier: p.squad_tier === "b_team" ? "first_team" : "b_team" })}
+                          disabled={setTier.isPending}
+                        >
+                          {p.squad_tier === "b_team" ? "↑ Principal" : "↓ Equipe B"}
                         </Button>
-                      ) : !p.loaned_from_club_id ? (
-                        <Button size="sm" variant="outline" onClick={() => loanOut.mutate(p.id)} disabled={loanOut.isPending}>
-                          Emprestar
-                        </Button>
-                      ) : null}
+                      </div>
                     </td>
                   </tr>
                 );

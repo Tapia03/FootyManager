@@ -463,6 +463,7 @@ export type Database = {
           scout_knowledge: number
           secondary_positions: string[]
           squad_number: number | null
+          squad_tier: string
           suspended_matches: number
           wage: number
           yellow_cards_season: number
@@ -506,6 +507,7 @@ export type Database = {
           scout_knowledge?: number
           secondary_positions?: string[]
           squad_number?: number | null
+          squad_tier?: string
           suspended_matches?: number
           wage?: number
           yellow_cards_season?: number
@@ -549,6 +551,7 @@ export type Database = {
           scout_knowledge?: number
           secondary_positions?: string[]
           squad_number?: number | null
+          squad_tier?: string
           suspended_matches?: number
           wage?: number
           yellow_cards_season?: number
