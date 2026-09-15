@@ -1,7 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { defaultClubColors } from "@/game/club-colors";
 import {
-  deriveFullAttributes, deriveAttributesFromRoles, generateAttributes,
+  deriveFullAttributes, deriveAttributesFromRoles, generateAttributes, footLabelFromAttributes,
   type LegacyBasicAttrs, type RoleScores, type PlayerAttributes,
 } from "@/game/attributes";
 import { assignSquadNumbers } from "@/game/squad-numbers";
@@ -227,7 +227,11 @@ export async function importSeed(
         natural_position: naturalPos,
         secondary_positions: secondaryPos,
         position_progress: positionProgress,
-        foot: p.foot,
+        // Derivado da força real de cada pé (attributes.left_foot/right_foot,
+        // geradas junto com o resto acima) — não do p.foot do seed, que hoje
+        // sempre vem "right" fixo pra base importada do FM (a CSV do Genie
+        // Scout não traz essa coluna).
+        foot: footLabelFromAttributes(attributes),
         squad_number: squadNumbers[String(pIdx)] ?? null,
         attributes,
         overall: p.overall,

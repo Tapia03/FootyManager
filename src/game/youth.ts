@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 import type { GranularPosition } from "./types";
-import { generateAttributes, attributesOverall, type PlayerAttributes } from "./attributes";
+import { generateAttributes, attributesOverall, footLabelFromAttributes, type PlayerAttributes } from "./attributes";
 
 export type BasePosition = "GK" | "DEF" | "MID" | "FWD";
 
@@ -87,7 +87,10 @@ export function generateYouthPlayer(
     age,
     position: slot.position,
     naturalPosition: slot.natural,
-    foot: rng() < 0.72 ? "right" : rng() < 0.92 ? "left" : "both",
+    // Derivado da força real de cada pé (attributes.left_foot/right_foot,
+    // já geradas por generateAttributes acima) — não é mais um sorteio à
+    // parte, fica sempre consistente com o que os atributos mostram.
+    foot: footLabelFromAttributes(attributes),
     attributes,
     overall,
     potential,

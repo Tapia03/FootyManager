@@ -66,6 +66,11 @@ export interface PlayerAttributes {
   rushing_out: number;
   tendency_to_punch: number;
   throwing: number;
+  // Pés (2) — igual ao FM real, força de cada pé (1-20), não é só uma
+  // categoria "destro/canhoto". Gerado à parte do resto (ver FOOT_KEYS):
+  // não é ligado à posição, segue a distribuição real do futebol.
+  left_foot: number;
+  right_foot: number;
 }
 
 export type AttributeKey = keyof PlayerAttributes;
@@ -91,6 +96,8 @@ export const GOALKEEPING_KEYS: AttributeKey[] = [
   "handling", "kicking", "one_on_ones", "passing", "reflexes", "rushing_out",
   "tendency_to_punch", "throwing",
 ];
+// Grupo à parte (igual ao FM real, fora dos 4 grupos principais).
+export const FOOT_KEYS: AttributeKey[] = ["left_foot", "right_foot"];
 
 export const ATTRIBUTE_LABEL: Record<AttributeKey, string> = {
   corners: "Escanteios", crossing: "Cruzamentos", dribbling: "Drible", finishing: "Finalização",
@@ -107,6 +114,7 @@ export const ATTRIBUTE_LABEL: Record<AttributeKey, string> = {
   eccentricity: "Excentricidade", handling: "Segurança nas Mãos", kicking: "Chute de Meta",
   one_on_ones: "Um contra Um", reflexes: "Reflexos", rushing_out: "Saída do Gol",
   tendency_to_punch: "Tendência a Socar", throwing: "Reposição de Mão",
+  left_foot: "Pé Esquerdo", right_foot: "Pé Direito",
 };
 
 export const ATTRIBUTE_GROUPS: { label: string; keys: AttributeKey[] }[] = [
@@ -114,6 +122,7 @@ export const ATTRIBUTE_GROUPS: { label: string; keys: AttributeKey[] }[] = [
   { label: "Mental", keys: MENTAL_KEYS },
   { label: "Físico", keys: PHYSICAL_KEYS },
   { label: "Goleiro", keys: GOALKEEPING_KEYS },
+  { label: "Pés", keys: FOOT_KEYS },
 ];
 
 function clamp(v: number, lo = 1, hi = 20): number {
@@ -399,7 +408,36 @@ export function generateAttributes(
     if (position !== "GK" && isGkOnly.has(key)) base = 2 + level * 0.1;
     out[key] = clamp(base + (rng() - 0.45) * spread);
   }
+
+  // Pé bom/pé ruim — força de CADA pé (1-20), não só uma categoria. Não é
+  // ligado à posição (um lateral não é mais canhoto que um centroavante),
+  // segue a distribuição real do futebol: maioria destra com o esquerdo bem
+  // mais fraco, uma minoria canhota (espelhado), poucos genuinamente
+  // ambidestros. Mesma proporção 72/20/8 que já era usada só pro rótulo
+  // categórico em src/game/youth.ts — agora o número de verdade nasce aqui,
+  // e o rótulo (players.foot) passa a ser DERIVADO desses dois valores.
+  const footRoll = rng();
+  if (footRoll < 0.72) { // destro
+    out.right_foot = clamp(14 + rng() * 6);
+    out.left_foot = clamp(4 + rng() * 7);
+  } else if (footRoll < 0.92) { // canhoto
+    out.left_foot = clamp(14 + rng() * 6);
+    out.right_foot = clamp(4 + rng() * 7);
+  } else { // ambidestro
+    const twoFooted = 13 + rng() * 6;
+    out.right_foot = clamp(twoFooted + (rng() - 0.5) * 3);
+    out.left_foot = clamp(twoFooted + (rng() - 0.5) * 3);
+  }
   return out;
+}
+
+// Rótulo simples (players.foot) a partir da força real de cada pé — usado
+// tanto na importação (seed-import.ts) quanto na geração de base (youth.ts),
+// pra nunca ficar dessincronizado do que os atributos realmente dizem.
+export function footLabelFromAttributes(a: Pick<PlayerAttributes, "left_foot" | "right_foot">): "left" | "right" | "both" {
+  if (a.right_foot >= a.left_foot + 3) return "right";
+  if (a.left_foot >= a.right_foot + 3) return "left";
+  return "both";
 }
 
 // -----------------------------------------------------------------------------
