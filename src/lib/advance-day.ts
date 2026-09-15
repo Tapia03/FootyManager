@@ -47,6 +47,7 @@ export interface AdvanceResult {
   newSeason?: number;
   retirements?: string[];
   youthPromoted?: number;
+  potentialSwings?: { name: string; kind: "breakout" | "bust"; from: number; to: number }[];
   fired?: boolean;
   firedFromClub?: string;
   seasonAwards?: { kind: "top_scorer" | "player_of_season"; playerName: string; value: number }[];
@@ -918,6 +919,18 @@ export async function advanceDays(
             body: `${rollover.retirements.join(", ")} pendura${rollover.retirements.length > 1 ? "ram" : "-"} as chuteiras e não seguem para a próxima temporada.`,
           });
         }
+        // Potencial imprevisível (item 17 do backlog FootSim) — só os casos
+        // notáveis (cauda rara do passeio aleatório, ver driftPotential em
+        // src/game/potential.ts), um por jogador, não todo ajuste pequeno.
+        for (const s of rollover.potentialSwings ?? []) {
+          drafts.push({
+            category: "press", sender: "Imprensa",
+            subject: s.kind === "breakout" ? `${s.name} surpreende na pré-temporada` : `${s.name} decepciona na pré-temporada`,
+            body: s.kind === "breakout"
+              ? `${s.name} vem impressionando o departamento técnico — o potencial dele subiu de ${s.from} para ${s.to}. Vale acompanhar de perto.`
+              : `${s.name} não vem convencendo o departamento técnico — o potencial dele caiu de ${s.from} para ${s.to}. Pode valer a pena reavaliar o papel dele no elenco.`,
+          });
+        }
         if (rollover.fired) {
           drafts.push({
             category: "board", sender: "Presidente",
@@ -961,6 +974,7 @@ export async function advanceDays(
     newSeason: rollover.newSeason,
     retirements: rollover.retirements,
     youthPromoted: rollover.youthPromoted,
+    potentialSwings: rollover.potentialSwings,
     fired: rollover.fired,
     firedFromClub: rollover.firedFromClub,
     seasonAwards: rollover.seasonAwards,

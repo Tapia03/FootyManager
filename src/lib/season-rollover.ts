@@ -9,6 +9,7 @@ import { generateYouthIntake } from "./youth";
 import { assignAIStaff } from "./staff";
 import { adjustMarketValue } from "@/game/valuation";
 import { attributesOverall, TECHNICAL_KEYS, MENTAL_KEYS, PHYSICAL_KEYS, type AttributeKey, type PlayerAttributes } from "@/game/attributes";
+import { developmentTrend, driftPotential } from "@/game/potential";
 
 // Quantos dias de "férias" entre o fim de uma temporada e o início da próxima.
 const OFF_SEASON_DAYS = 30;
@@ -31,6 +32,10 @@ export interface RolloverResult {
   newSeason?: number;
   retirements?: string[];
   youthPromoted?: number;
+  // Potencial imprevisível (item 17 do backlog FootSim) — só os casos
+  // notáveis (cauda rara de driftPotential, não todo ajuste pequeno) do
+  // elenco do USUÁRIO, mesmo padrão de escopo de `retirements`.
+  potentialSwings?: { name: string; kind: "breakout" | "bust"; from: number; to: number }[];
   fired?: boolean;
   firedFromClub?: string;
   seasonAwards?: { kind: "top_scorer" | "player_of_season"; playerName: string; value: number }[];
@@ -238,7 +243,7 @@ export async function checkAndRolloverSeason(saveId: string): Promise<RolloverRe
   // contrato, deriva atributo, aposenta, gera base). Ligas de segundo plano:
   // uma chamada RPC que faz tudo no servidor (idade, contrato, deriva de
   // overall, aposentadoria) e recalcula clubs.strength de todo mundo.
-  const { retirements, youthPromoted } = await agePlayersAndReleaseContracts(
+  const { retirements, youthPromoted, potentialSwings } = await agePlayersAndReleaseContracts(
     saveId, lastDate, myClubId, playableClubIds,
   );
   if (backgroundCompIds.size > 0) {
@@ -285,6 +290,7 @@ export async function checkAndRolloverSeason(saveId: string): Promise<RolloverRe
 
   return {
     rolledOver: true, newSeason: (leagueComps[0]?.season ?? comps[0].season) + 1, retirements, youthPromoted,
+    potentialSwings,
     fired, firedFromClub, seasonAwards, objectiveOutcome,
     promotion: promoRel.userMove?.direction === "promoted" ? { competitionName: promoRel.userMove.toName } : undefined,
     relegation: promoRel.userMove?.direction === "relegated" ? { competitionName: promoRel.userMove.toName } : undefined,
@@ -368,11 +374,11 @@ const AI_AUTO_RENEW_CHANCE = 0.7;
 async function agePlayersAndReleaseContracts(
   saveId: string, seasonEndDate: string, myClubId: string | null,
   playableClubIds?: string[],
-): Promise<{ retirements: string[]; youthPromoted: number }> {
+): Promise<{ retirements: string[]; youthPromoted: number; potentialSwings: RolloverResult["potentialSwings"] }> {
   const nextSeasonStart = addDays(seasonEndDate, OFF_SEASON_DAYS);
   const { data: allPlayers } = await supabase
     .from("players")
-    .select("id, name, age, position, club_id, contract_until, wage, overall, market_value, attributes")
+    .select("id, name, age, position, club_id, contract_until, wage, overall, potential, market_value, attributes")
     .eq("save_id", saveId);
   // Só jogadores de clubes de ligas jogáveis (+ agentes livres, club_id null).
   // Os de clubes de segundo plano viram pelo RPC rollover_background_players.
@@ -380,11 +386,12 @@ async function agePlayersAndReleaseContracts(
   const players = playableSet
     ? (allPlayers ?? []).filter((p) => !p.club_id || playableSet.has(p.club_id))
     : (allPlayers ?? []);
-  if (players.length === 0) return { retirements: [], youthPromoted: 0 };
+  if (players.length === 0) return { retirements: [], youthPromoted: 0, potentialSwings: [] };
 
   const updates: any[] = [];
   const retiredIds: string[] = [];
   const retirements: string[] = [];
+  const potentialSwings: NonNullable<RolloverResult["potentialSwings"]> = [];
   for (const p of players as any[]) {
     const newAge = (p.age ?? 24) + 1;
 
@@ -415,8 +422,27 @@ async function agePlayersAndReleaseContracts(
       }
     }
 
-    // Progressão/regressão leve de atributos, clampada em 1-20.
-    const trend = newAge <= 23 ? 1 : newAge >= 30 ? -1 : 0;
+    // Potencial imprevisível (item 17 do backlog FootSim) — o teto sofre um
+    // pequeno passeio aleatório uma vez por temporada ANTES do trend de
+    // overall abaixo usar ele (senão o jogador "sentiria" só a folga antiga).
+    // Só mexe em quem já tem potencial definido — sem inventar dado pra
+    // quem não tem.
+    if (p.potential != null) {
+      const d = driftPotential(newAge, p.overall, p.potential);
+      if (d.potential !== p.potential) {
+        patch.potential = d.potential;
+        if (p.club_id === myClubId && d.kind !== "normal") {
+          potentialSwings.push({ name: p.name, kind: d.kind, from: p.potential, to: d.potential });
+        }
+      }
+    }
+
+    // Progressão/regressão leve de atributos, clampada em 1-20 — agora
+    // depende da folga real entre overall e potencial (ver developmentTrend
+    // em src/game/potential.ts), não só da idade: jovem já colado no teto
+    // estagna ("flop"), veterano com folga de verdade segura ("late
+    // bloomer"), em vez de subir/cair igual pra todo mundo da faixa.
+    const trend = developmentTrend(newAge, p.overall, patch.potential ?? p.potential ?? null);
     if (trend !== 0) {
       const current: PlayerAttributes = p.attributes ?? {};
       const shuffled = [...DEV_ATTRS].sort(() => Math.random() - 0.5).slice(0, 3);
@@ -456,5 +482,5 @@ async function agePlayersAndReleaseContracts(
     if (c.id === myClubId) youthPromoted = count;
   }
 
-  return { retirements, youthPromoted };
+  return { retirements, youthPromoted, potentialSwings };
 }
