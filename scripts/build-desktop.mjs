@@ -23,6 +23,22 @@ if (dlls.status !== 0) {
   process.exit(dlls.status ?? 1);
 }
 
+// Reempacota local-db-server.mjs + copia supabase/migrations/ pro bundle
+// (src-tauri/binaries/server/) TODA VEZ — sem isso o app empacotado roda
+// com migrations desatualizadas (achado real ao testar o build: só 37 de 45
+// estavam lá, faltando até uma correção de permissão de RLS já commitada).
+// Script tao rapido que nao vale a pena tentar pular quando "nada mudou".
+const serverSidecar = spawnSync("node", ["scripts/build-server-sidecar.mjs"], {
+  cwd: root,
+  stdio: "inherit",
+  shell: true,
+});
+
+if (serverSidecar.status !== 0) {
+  console.error("[build-desktop] falha ao empacotar o server sidecar (local-db-server.mjs + migrations), abortando build.");
+  process.exit(serverSidecar.status ?? 1);
+}
+
 const result = spawnSync("npx", ["vite", "build"], {
   cwd: root,
   stdio: "inherit",
