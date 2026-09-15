@@ -56,6 +56,12 @@ export interface SeedClub {
   morale: number;
   wage_budget?: number | null;
   avg_attendance?: number | null;
+  // Reais, de fora da CSV do FM (que não traz isso) — puxados do
+  // openfootball/clubs (CC0) via scripts/fetch-stadiums.mjs. Ausentes quando
+  // o país não tem cobertura lá ou o nome não casou (nunca inventado).
+  stadium_name?: string | null;
+  stadium_city?: string | null;
+  founded_year?: number | null;
   players: SeedPlayer[];
 }
 
@@ -165,6 +171,9 @@ export async function importSeed(
       division: c.division ?? 1,
       wage_budget: c.wage_budget ?? null,
       avg_attendance: c.avg_attendance ?? null,
+      stadium_name: c.stadium_name ?? null,
+      stadium_city: c.stadium_city ?? null,
+      founded_year: c.founded_year ?? null,
     };
   });
 

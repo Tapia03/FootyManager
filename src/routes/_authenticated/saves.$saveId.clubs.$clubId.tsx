@@ -194,7 +194,12 @@ function ClubPage() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <InfoTile icon={Landmark} label="Centro de treinamento" value={`${c.training_facilities ?? 3}/5`} />
         <InfoTile icon={Landmark} label="Categoria de base" value={`${c.youth_facilities ?? 3}/5`} />
-        <InfoTile icon={Shield} label="Estádio" value={(c.stadium_capacity ?? 0).toLocaleString("pt-BR")} hint="lugares" />
+        <InfoTile
+          icon={Shield}
+          label="Estádio"
+          value={(c.stadium_capacity ?? 0).toLocaleString("pt-BR")}
+          hint={c.stadium_name ? `${c.stadium_name}${c.founded_year ? ` · fundado em ${c.founded_year}` : ""}` : "lugares"}
+        />
         <InfoTile icon={Flame} label="Rival" value={rival?.name ?? "—"} />
       </div>
 
