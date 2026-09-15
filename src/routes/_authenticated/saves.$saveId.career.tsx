@@ -7,6 +7,7 @@ import { objectiveLabel } from "@/game/board";
 import { firedSeasonByClub, isFiringSeason } from "@/game/career";
 import { formatDate } from "@/lib/game-hooks";
 import { PageHeader, MetricCard, MeterBar, Pill, EmptyState } from "@/components/fm";
+import { ClubCrest } from "@/components/club-crest";
 import { Award, Trophy, Mail } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -47,7 +48,7 @@ function CareerPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("season_objectives")
-        .select("*, clubs(name), competitions(name)")
+        .select("*, clubs(id, name, crest_url, primary_color, secondary_color), competitions(name)")
         .eq("save_id", saveId)
         .neq("status", "in_progress")
         .order("season", { ascending: false });
@@ -64,7 +65,7 @@ function CareerPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("job_offers")
-        .select("id, status, offer_date, clubs!job_offers_offering_club_id_fkey(name, reputation)")
+        .select("id, status, offer_date, clubs!job_offers_offering_club_id_fkey(id, name, reputation, crest_url, primary_color, secondary_color)")
         .eq("save_id", saveId).neq("status", "pending")
         .order("offer_date", { ascending: false });
       if (error) throw error;
@@ -139,7 +140,7 @@ function CareerPage() {
             <div key={h.id} className="flex items-center justify-between gap-2 border-t border-border/50 pt-2 text-sm first:border-t-0 first:pt-0">
               <div>
                 <span className="font-medium">Temporada {h.season}</span>
-                <span className="text-muted-foreground"> — {h.clubs?.name ?? "?"} · {h.competitions?.name ?? "?"}</span>
+                <span className="text-muted-foreground inline-flex items-center gap-1"> — {h.clubs && <ClubCrest club={h.clubs} className="w-3.5 h-3.5" />} {h.clubs?.name ?? "?"} · {h.competitions?.name ?? "?"}</span>
                 <div className="text-muted-foreground">
                   {objectiveLabel({ kind: h.kind, target: h.target })} · terminou em {h.final_position}º
                   {h.final_position === 1 ? " 🏆" : ""}
@@ -160,7 +161,7 @@ function CareerPage() {
           {offers.data?.map((o) => (
             <div key={o.id} className="flex items-center justify-between gap-2 border-t border-border/50 pt-2 text-sm first:border-t-0 first:pt-0">
               <div>
-                <span className="font-medium">{o.clubs?.name ?? "?"}</span>
+                <span className="font-medium inline-flex items-center gap-1.5">{o.clubs && <ClubCrest club={o.clubs} className="w-4 h-4" />} {o.clubs?.name ?? "?"}</span>
                 <span className="text-muted-foreground"> · reputação {o.clubs?.reputation ?? "?"} · {formatDate(o.offer_date)}</span>
               </div>
               <Pill tone={o.status === "accepted" ? "ok" : o.status === "declined" ? "neutral" : "warn"}>

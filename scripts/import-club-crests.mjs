@@ -9,11 +9,23 @@
 // dev quanto no build empacotado do Tauri (frontendDist = dist/client
 // inteiro), então não precisa de nenhum passo extra de deploy.
 //
-// A estrutura de nome de arquivo varia de pack pra pack (nome do clube?
-// sigla? ID interno da SI sem nome nenhum?) — esse script tenta a heurística
-// mais comum (nome do arquivo ≈ nome do clube, com ou sem ID na frente) e
-// reporta honestamente quem não casou, pros dois lados (arquivo sem clube E
-// clube sem arquivo). Nunca inventa match.
+// A estrutura de nome de arquivo varia de pack pra pack. Achado real
+// testando com o pack de verdade (footbe/FMScout, 15/09/2026): os arquivos
+// são nomeados só por ID numérico da SI (ex. "107201.png"), sem nome
+// nenhum — mas esse MESMO ID já é o "ID Único" que scripts/
+// fm-csv-to-football-db.mjs grava em clubs.json (vem do Genie Scout, que lê
+// direto do banco da SI). Confirmado por amostragem: 8/10 clubes do Brasil
+// bateram no ID exato. Então o match primário é por ID EXATO (nome do
+// arquivo sem extensão === club.id) — muito mais confiável que nome. Fallback
+// pra nome normalizado (heurística antiga) só quando o ID não bate em nada,
+// pra continuar funcionando com pack de outro formato. Reporta honestamente
+// quem não casou, pros dois lados. Nunca inventa match.
+//
+// Também extrai primary_color/secondary_color reais do próprio escudo
+// (pixel mais frequente, ignorando fundo transparente) pra qualquer clube
+// que ainda não tenha cor definida — mais confiável que adivinhar, e é a
+// cor DAQUELE escudo específico. Nunca sobrescreve cor já pesquisada (ver
+// scripts/fetch-club-colors.mjs).
 //
 // Uso:
 //   node scripts/import-club-crests.mjs <pasta-com-as-imagens> [data/football-db]
@@ -61,9 +73,56 @@ function candidateNameFromFilename(file) {
   return stripped || null;
 }
 
+// Cor real do clube extraída do próprio escudo — mais confiável que
+// qualquer dataset externo (é o escudo DE VERDADE daquele clube). Ignora
+// pixel transparente (fundo do PNG) via alpha < 128; quantiza canal em
+// blocos de 24 pra agrupar sombras/variações de anti-aliasing na mesma cor;
+// cor mais frequente = primária, próxima cor suficientemente distinta
+// (distância euclidiana > 60) = secundária. Só roda em cima de quem JÁ
+// casou (não adianta tentar em imagem sem clube).
+async function extractColors(imgPath) {
+  let data, info;
+  try {
+    ({ data, info } = await sharp(imgPath)
+      .resize(48, 48, { fit: "inside" })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true }));
+  } catch {
+    return null; // formato que o sharp não consegue rasterizar (svg quebrado etc.)
+  }
+  const counts = new Map();
+  const BUCKET = 24;
+  for (let i = 0; i < data.length; i += info.channels) {
+    if (data[i + 3] < 128) continue; // pixel transparente = fundo
+    const qr = Math.round(data[i] / BUCKET) * BUCKET;
+    const qg = Math.round(data[i + 1] / BUCKET) * BUCKET;
+    const qb = Math.round(data[i + 2] / BUCKET) * BUCKET;
+    const key = `${qr},${qg},${qb}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  if (sorted.length === 0) return null; // imagem toda transparente
+  const toHex = (key) => "#" + key.split(",").map((v) => Math.min(255, Number(v)).toString(16).padStart(2, "0")).join("");
+  const dist = (k1, k2) => {
+    const a = k1.split(",").map(Number), b = k2.split(",").map(Number);
+    return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  };
+  const primaryKey = sorted[0][0];
+  const secondaryEntry = sorted.find(([key]) => dist(key, primaryKey) > 60);
+  return {
+    primary: toHex(primaryKey),
+    secondary: secondaryEntry ? toHex(secondaryEntry[0]) : toHex(primaryKey),
+  };
+}
+
+// "small" = pasta de miniatura duplicada em resolução menor (confirmado no
+// pack footbe: mesmos ~1400 IDs, imagem menor) — pulamos, controlamos nosso
+// próprio resize via sharp de qualquer forma.
 function walkImages(dir) {
   const out = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory() && entry.name.toLowerCase() === "small") continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) out.push(...walkImages(full));
     else if (IMAGE_EXT.test(entry.name)) out.push(full);
@@ -72,10 +131,11 @@ function walkImages(dir) {
 }
 
 async function main() {
-  // Índice nome-normalizado -> { club, country, clubsPath, clubs } de TODOS
-  // os países de uma vez (o pack não segue necessariamente nossa pasta por
-  // país).
-  const lookup = new Map();
+  // Dois índices de TODOS os países de uma vez (o pack não segue
+  // necessariamente nossa pasta por país): por ID exato (prioridade) e por
+  // nome normalizado (fallback).
+  const byId = new Map();
+  const byName = new Map();
   const byCountry = new Map();
   let totalClubs = 0;
 
@@ -88,8 +148,9 @@ async function main() {
     byCountry.set(country, { clubsPath, clubs });
     totalClubs += clubs.length;
     for (const c of clubs) {
+      if (c.id != null) byId.set(String(c.id), c);
       const key = normalize(c.name);
-      if (key && !lookup.has(key)) lookup.set(key, c);
+      if (key && !byName.has(key)) byName.set(key, c);
     }
   }
 
@@ -98,18 +159,20 @@ async function main() {
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
-  let matched = 0;
+  let matched = 0, byIdCount = 0, byNameCount = 0;
   const unmatchedFiles = [];
   const matchedClubIds = new Set();
 
   for (const imgPath of images) {
     const file = path.basename(imgPath);
-    const candidate = candidateNameFromFilename(file);
-    if (!candidate) {
-      unmatchedFiles.push(file);
-      continue;
+    const rawStem = file.replace(IMAGE_EXT, "");
+    let club = byId.get(rawStem);
+    if (club) byIdCount++;
+    if (!club) {
+      const candidate = candidateNameFromFilename(file);
+      if (candidate) club = byName.get(normalize(candidate));
+      if (club) byNameCount++;
     }
-    const club = lookup.get(normalize(candidate));
     if (!club) {
       unmatchedFiles.push(file);
       continue;
@@ -120,6 +183,18 @@ async function main() {
       .webp({ quality: 90 })
       .toFile(outFile);
     club.crest_url = `/crests/${club.id}.webp`;
+
+    // Só preenche cor se o clube ainda não tem uma real definida (nunca
+    // sobrescreve uma cor já pesquisada/confirmada, ex. scripts/
+    // fetch-club-colors.mjs) — preenche o resto que não tem nada ainda.
+    if (!club.primary_color || !club.secondary_color) {
+      const colors = await extractColors(imgPath);
+      if (colors) {
+        club.primary_color ??= colors.primary;
+        club.secondary_color ??= colors.secondary;
+      }
+    }
+
     matchedClubIds.add(club.id);
     matched++;
   }
@@ -128,7 +203,7 @@ async function main() {
     fs.writeFileSync(clubsPath, JSON.stringify(clubs, null, 2));
   }
 
-  console.log(`\n${matched}/${images.length} imagens casadas com um clube.`);
+  console.log(`\n${matched}/${images.length} imagens casadas com um clube (${byIdCount} por ID exato, ${byNameCount} por nome).`);
   console.log(`${matchedClubIds.size}/${totalClubs} clubes da base ganharam escudo real.`);
   if (unmatchedFiles.length) {
     console.log(`\n${unmatchedFiles.length} imagens sem match (primeiras 20):`);

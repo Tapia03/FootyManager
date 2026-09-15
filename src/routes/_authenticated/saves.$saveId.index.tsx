@@ -13,6 +13,7 @@ import { positionLabel } from "@/game/types";
 import { effectiveKnowledge, tierFor, fuzzRange } from "@/game/scouting";
 import { HeroBanner, MetricCard, StatBar, EmptyState, Pill, RatingBadge } from "@/components/fm";
 import { NationalityFlag } from "@/components/nationality-flag";
+import { ClubCrest } from "@/components/club-crest";
 import {
   LayoutDashboard, Trophy, Landmark, Users, Wallet, CalendarDays, Flame, ArrowRight, AlertTriangle,
 } from "lucide-react";
@@ -79,7 +80,7 @@ function Overview() {
       const compIds = new Set<string>();
       for (const m of data ?? []) { ids.add(m.home_club_id); ids.add(m.away_club_id); if (m.competition_id) compIds.add(m.competition_id); }
       const [{ data: clubs }, { data: comps }] = await Promise.all([
-        supabase.from("clubs").select("id, name, short_name").in("id", Array.from(ids)),
+        supabase.from("clubs").select("id, name, short_name, crest_url, primary_color, secondary_color").in("id", Array.from(ids)),
         compIds.size ? supabase.from("competitions").select("id, type").in("id", Array.from(compIds)) : Promise.resolve({ data: [] as any[] }),
       ]);
       const map = new Map((clubs ?? []).map((c) => [c.id, c]));
@@ -131,7 +132,7 @@ function Overview() {
         .eq("played", true).order("match_date", { ascending: false }).limit(6);
       const ids = new Set<string>();
       for (const m of data ?? []) { ids.add(m.home_club_id); ids.add(m.away_club_id); }
-      const { data: clubs } = await supabase.from("clubs").select("id, name, short_name").in("id", Array.from(ids));
+      const { data: clubs } = await supabase.from("clubs").select("id, name, short_name, crest_url, primary_color, secondary_color").in("id", Array.from(ids));
       const map = new Map((clubs ?? []).map((c) => [c.id, c]));
       return (data ?? []).map((m) => ({ ...m, home: map.get(m.home_club_id), away: map.get(m.away_club_id) }));
     },
@@ -271,8 +272,8 @@ function Overview() {
               <div className="fm-eyebrow mb-1 flex items-center justify-center gap-1">
                 <CalendarDays className="size-3" /> Próximo jogo
               </div>
-              <div className="font-display text-sm font-semibold">
-                {club.data?.short_name} <span className="text-muted-foreground">vs</span> {nextOppName}
+              <div className="font-display text-sm font-semibold inline-flex items-center justify-center gap-1">
+                <ClubCrest club={club.data as any} className="w-4 h-4" /> {club.data?.short_name} <span className="text-muted-foreground">vs</span> {nextMatch && <ClubCrest club={(nextIsHome ? nextMatch.away : nextMatch.home) as any} className="w-4 h-4" />} {nextOppName}
                 {nextClassic && <Flame className="ml-1 inline size-3.5 text-warn" />}
               </div>
               <div className="mt-0.5 text-[11px] text-muted-foreground">
@@ -416,8 +417,13 @@ function Overview() {
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Relatório do adversário */}
         <Card className="p-4">
-          <div className="fm-eyebrow mb-3">
-            Próximo adversário{opponentReport.data?.club ? ` — ${opponentReport.data.club.name}` : ""}
+          <div className="fm-eyebrow mb-3 flex items-center gap-1.5">
+            Próximo adversário
+            {opponentReport.data?.club && (
+              <span className="inline-flex items-center gap-1.5">
+                — <ClubCrest club={opponentReport.data.club as any} className="w-4 h-4" /> {opponentReport.data.club.name}
+              </span>
+            )}
           </div>
           {opponentReport.data?.club ? (
             <div className="space-y-3">
@@ -488,8 +494,8 @@ function Overview() {
               <ul className="space-y-1.5 text-sm">
                 {upcoming.data.map((m: any) => (
                   <li key={m.id} className="flex items-center justify-between">
-                    <span>
-                      {m.home?.short_name ?? "?"} <span className="text-muted-foreground">×</span> {m.away?.short_name ?? "?"}
+                    <span className="inline-flex items-center gap-1">
+                      {m.home && <ClubCrest club={m.home} className="w-3.5 h-3.5" />} {m.home?.short_name ?? "?"} <span className="text-muted-foreground">×</span> {m.away && <ClubCrest club={m.away} className="w-3.5 h-3.5" />} {m.away?.short_name ?? "?"}
                       {m.home?.name && m.away?.name && isRivalry(m.home.name, m.away.name) && (
                         <Flame className="ml-1 inline size-3 text-warn" />
                       )}
@@ -514,12 +520,12 @@ function Overview() {
                   const res = my > opp ? "ok" : my < opp ? "danger" : "neutral";
                   return (
                     <li key={m.id} className="flex items-center justify-between">
-                      <span>
-                        {m.home?.short_name ?? "?"}{" "}
+                      <span className="inline-flex items-center gap-1">
+                        {m.home && <ClubCrest club={m.home} className="w-3.5 h-3.5" />} {m.home?.short_name ?? "?"}{" "}
                         <span className={res === "ok" ? "font-bold text-ok" : res === "danger" ? "font-bold text-danger" : "font-bold"}>
                           {m.home_score} × {m.away_score}
                         </span>{" "}
-                        {m.away?.short_name ?? "?"}
+                        {m.away && <ClubCrest club={m.away} className="w-3.5 h-3.5" />} {m.away?.short_name ?? "?"}
                       </span>
                       <span className="text-xs text-muted-foreground">{formatDate(m.match_date)}</span>
                     </li>

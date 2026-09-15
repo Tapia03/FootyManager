@@ -19,6 +19,7 @@ import { marketTrendFromForm } from "@/game/valuation";
 import { GRANULAR_POSITIONS, positionLabel } from "@/game/types";
 import { clubColors, contrastText } from "@/game/club-colors";
 import { NationalityFlag } from "@/components/nationality-flag";
+import { ClubCrest } from "@/components/club-crest";
 import { RadarChart, Pill, ProsConsList, RatingBadge } from "@/components/fm";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -55,7 +56,7 @@ function PlayerDetail() {
     queryKey: ["player", playerId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("players").select("*, clubs!players_club_id_fkey(name, short_name, reputation, primary_color, secondary_color)")
+        .from("players").select("*, clubs!players_club_id_fkey(id, name, short_name, reputation, crest_url, primary_color, secondary_color)")
         .eq("id", playerId).single();
       // PGRST116 = .single() genuinely não achou linha nenhuma (jogador não
       // existe de verdade) — qualquer OUTRO erro (503/rede/timeout do banco
@@ -227,7 +228,7 @@ function PlayerDetail() {
                     <span><NationalityFlag nationality={p.nationality} /> {p.nationality}</span>
                   </>
                 )}
-                {p.clubs?.name && !isMine && (<><span>·</span><span>{p.clubs.name}</span></>)}
+                {p.clubs?.name && !isMine && (<><span>·</span><span className="inline-flex items-center gap-1"><ClubCrest club={p.clubs as any} className="w-3.5 h-3.5" /> {p.clubs.name}</span></>)}
               </div>
             </div>
           </div>

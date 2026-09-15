@@ -65,7 +65,7 @@ function ClubPage() {
     queryKey: ["club-page-league-clubs", compId],
     enabled: !!compId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("clubs").select("id, name").eq("competition_id", compId!);
+      const { data, error } = await supabase.from("clubs").select("id, name, crest_url, primary_color, secondary_color").eq("competition_id", compId!);
       if (error) throw error;
       return data ?? [];
     },
@@ -116,7 +116,7 @@ function ClubPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("matches")
-        .select("id, match_date, home_club_id, away_club_id, home_score, away_score, played, home:clubs!matches_home_club_id_fkey(name), away:clubs!matches_away_club_id_fkey(name)")
+        .select("id, match_date, home_club_id, away_club_id, home_score, away_score, played, home:clubs!matches_home_club_id_fkey(id, name, crest_url, primary_color, secondary_color), away:clubs!matches_away_club_id_fkey(id, name, crest_url, primary_color, secondary_color)")
         .or(`home_club_id.eq.${clubId},away_club_id.eq.${clubId}`)
         .order("match_date", { ascending: false }).limit(30);
       if (error) throw error;
@@ -192,7 +192,7 @@ function ClubPage() {
           value={(c.stadium_capacity ?? 0).toLocaleString("pt-BR")}
           hint={c.stadium_name ? `${c.stadium_name}${c.founded_year ? ` · fundado em ${c.founded_year}` : ""}` : "lugares"}
         />
-        <InfoTile icon={Flame} label="Rival" value={rival?.name ?? "—"} />
+        <InfoTile icon={Flame} label="Rival" value={rival ? <span className="inline-flex items-center gap-1.5"><ClubCrest club={rival} className="w-4 h-4" /> {rival.name}</span> : "—"} />
       </div>
 
       {isMine && (
@@ -210,8 +210,8 @@ function ClubPage() {
           <div className="fm-eyebrow mb-3">Próximo jogo</div>
           {nextMatch.data ? (
             <div className="text-sm">
-              <div className="font-medium">
-                {(nextMatch.data as any).home?.name} <span className="text-muted-foreground">vs</span> {(nextMatch.data as any).away?.name}
+              <div className="font-medium inline-flex items-center gap-1.5 flex-wrap">
+                <ClubCrest club={(nextMatch.data as any).home} className="w-4 h-4" /> {(nextMatch.data as any).home?.name} <span className="text-muted-foreground">vs</span> <ClubCrest club={(nextMatch.data as any).away} className="w-4 h-4" /> {(nextMatch.data as any).away?.name}
               </div>
               <div className="text-muted-foreground">{formatDate((nextMatch.data as any).match_date)}</div>
             </div>
@@ -226,7 +226,9 @@ function ClubPage() {
             <div className="space-y-1.5 text-sm">
               {(recentMatches.data as any[]).map((m) => (
                 <div key={m.id} className="flex items-center justify-between gap-2">
-                  <span className="truncate text-muted-foreground">{m.home?.name} × {m.away?.name}</span>
+                  <span className="truncate text-muted-foreground inline-flex items-center gap-1">
+                    <ClubCrest club={m.home} className="w-3.5 h-3.5" /> {m.home?.name} × <ClubCrest club={m.away} className="w-3.5 h-3.5" /> {m.away?.name}
+                  </span>
                   <span className="font-mono font-semibold">{m.home_score}–{m.away_score}</span>
                 </div>
               ))}

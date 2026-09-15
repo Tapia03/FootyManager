@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { formatDate, formatMoney } from "@/lib/game-hooks";
 import { INBOX_CATEGORY_LABEL, type InboxCategory } from "@/lib/inbox";
 import { PageHeader, SubTabs, Pill, SplitView, EmptyState, type Tone } from "@/components/fm";
+import { ClubCrest } from "@/components/club-crest";
 import {
   Mail, Landmark, Newspaper, HeartPulse, ArrowLeftRight, Trophy, GraduationCap, FileText, ArrowRight, CheckCheck,
 } from "lucide-react";
@@ -59,7 +60,7 @@ function NewsPage() {
     queryKey: ["news-transfers", saveId],
     queryFn: async () => (await supabase
       .from("transfers")
-      .select("*, players(name), from_club:clubs!transfers_from_club_id_fkey(name), to_club:clubs!transfers_to_club_id_fkey(name)")
+      .select("*, players(name), from_club:clubs!transfers_from_club_id_fkey(id, name, crest_url, primary_color, secondary_color), to_club:clubs!transfers_to_club_id_fkey(id, name, crest_url, primary_color, secondary_color)")
       .eq("save_id", saveId).eq("status", "completed")
       .order("resolved_date", { ascending: false }).limit(15)).data ?? [],
   });
@@ -69,7 +70,7 @@ function NewsPage() {
     enabled: !!compId && !!clubId,
     queryFn: async () => (await supabase
       .from("matches")
-      .select("*, home:clubs!matches_home_club_id_fkey(name), away:clubs!matches_away_club_id_fkey(name)")
+      .select("*, home:clubs!matches_home_club_id_fkey(id, name, crest_url, primary_color, secondary_color), away:clubs!matches_away_club_id_fkey(id, name, crest_url, primary_color, secondary_color)")
       .eq("competition_id", compId!).eq("played", true)
       .neq("home_club_id", clubId!).neq("away_club_id", clubId!)
       .order("match_date", { ascending: false }).limit(15)).data ?? [],
@@ -227,8 +228,8 @@ function NewsPage() {
               <div key={t.id} className="border-t border-border/50 pt-2 text-sm first:border-t-0 first:pt-0">
                 <div>
                   <span className="font-medium">{t.players?.name ?? "Jogador"}</span>{" "}
-                  <span className="text-muted-foreground">
-                    {t.from_club?.name ?? "livre"} → {t.to_club?.name ?? "?"}
+                  <span className="text-muted-foreground inline-flex items-center gap-1">
+                    {t.from_club && <ClubCrest club={t.from_club} className="w-3.5 h-3.5" />} {t.from_club?.name ?? "livre"} → {t.to_club && <ClubCrest club={t.to_club} className="w-3.5 h-3.5" />} {t.to_club?.name ?? "?"}
                   </span>
                 </div>
                 <div className="text-xs text-muted-foreground">
@@ -245,7 +246,7 @@ function NewsPage() {
           <div className="max-h-[320px] space-y-2 overflow-y-auto">
             {results.data?.map((m: any) => (
               <div key={m.id} className="flex justify-between border-t border-border/50 pt-2 text-sm first:border-t-0 first:pt-0">
-                <span>{m.home?.name ?? "?"} <span className="font-mono font-semibold">{m.home_score} × {m.away_score}</span> {m.away?.name ?? "?"}</span>
+                <span className="inline-flex items-center gap-1">{m.home && <ClubCrest club={m.home} className="w-3.5 h-3.5" />} {m.home?.name ?? "?"} <span className="font-mono font-semibold">{m.home_score} × {m.away_score}</span> {m.away && <ClubCrest club={m.away} className="w-3.5 h-3.5" />} {m.away?.name ?? "?"}</span>
                 <span className="ml-2 shrink-0 text-xs text-muted-foreground">{formatDate(m.match_date)}</span>
               </div>
             ))}

@@ -177,7 +177,7 @@ function SaveLayout() {
     enabled: !!save.data?.my_club_id,
     queryFn: async () => (await supabase
       .from("job_offers")
-      .select("id, offering_club_id, clubs!job_offers_offering_club_id_fkey(name, reputation)")
+      .select("id, offering_club_id, clubs!job_offers_offering_club_id_fkey(id, name, reputation, crest_url, primary_color, secondary_color)")
       .eq("save_id", saveId).eq("status", "pending")
       .order("created_at", { ascending: false }).limit(1).maybeSingle()).data,
   });
@@ -1161,7 +1161,7 @@ function InPlayTacticsBar({
 interface JobOfferData {
   id: string;
   offering_club_id: string;
-  clubs: { name: string; reputation: number } | null;
+  clubs: { id: string; name: string; reputation: number; crest_url?: string | null; primary_color?: string | null; secondary_color?: string | null } | null;
 }
 
 function JobOfferDialog({ saveId, offer, onDone }: { saveId: string; offer: JobOfferData; onDone: () => void }) {
@@ -1189,7 +1189,7 @@ function JobOfferDialog({ saveId, offer, onDone }: { saveId: string; offer: JobO
           <DialogTitle>Sondagem de emprego</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          O <strong>{clubName}</strong> (reputação {offer.clubs?.reputation ?? "?"}) está de olho no seu trabalho e quer te contratar como técnico. Aceitar troca você de clube imediatamente.
+          O <strong className="inline-flex items-center gap-1.5">{offer.clubs && <ClubCrest club={offer.clubs} className="w-4 h-4" />} {clubName}</strong> (reputação {offer.clubs?.reputation ?? "?"}) está de olho no seu trabalho e quer te contratar como técnico. Aceitar troca você de clube imediatamente.
         </p>
         <div className="flex gap-2 justify-end pt-2">
           <Button variant="outline" onClick={() => respond("decline")} disabled={responding}>Recusar</Button>

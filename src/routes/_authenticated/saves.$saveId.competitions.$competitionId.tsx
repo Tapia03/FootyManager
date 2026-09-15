@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { computeStandings } from "@/game/standings";
 import { promotionSlots } from "@/game/promotion";
 import { PageHeader, EmptyState } from "@/components/fm";
+import { ClubCrest } from "@/components/club-crest";
 import { Trophy, ListOrdered } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/saves/$saveId/competitions/$competitionId")({
@@ -51,7 +52,7 @@ function CompetitionPage() {
   const clubs = useQuery({
     queryKey: ["competition-page-clubs", competitionId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("clubs").select("id, name").eq("competition_id", competitionId!);
+      const { data, error } = await supabase.from("clubs").select("id, name, crest_url, primary_color, secondary_color").eq("competition_id", competitionId!);
       if (error) throw error;
       return data ?? [];
     },
@@ -95,7 +96,7 @@ function CompetitionPage() {
     queryKey: ["competition-page-champions", competitionId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("season_history").select("season, clubs(name)")
+        .from("season_history").select("season, clubs(id, name, crest_url, primary_color, secondary_color)")
         .eq("competition_id", competitionId!).eq("position", 1)
         .order("season", { ascending: false }).limit(10);
       if (error) throw error;
@@ -112,7 +113,7 @@ function CompetitionPage() {
     enabled: !!clubs.data && clubs.data.length > 0,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("players").select("id, name, goals_season, club_id, clubs(name)")
+        .from("players").select("id, name, goals_season, club_id, clubs(id, name, crest_url, primary_color, secondary_color)")
         .in("club_id", (clubs.data ?? []).map((c) => c.id)).gt("goals_season", 0)
         .order("goals_season", { ascending: false }).limit(10);
       if (error) throw error;
@@ -162,8 +163,8 @@ function CompetitionPage() {
                     <tr key={r.club_id} className={`border-b border-border/50 ${r.club_id === myClubId ? "bg-primary/10 font-semibold" : "hover:bg-elevated/50"}`}>
                       <td className={`px-3 py-1.5 text-muted-foreground border-l-2 ${zone === "promo" ? "border-ok" : zone === "rele" ? "border-danger" : "border-transparent"}`}>{pos}</td>
                       <td className="px-3 py-1.5 text-left">
-                        <Link to="/saves/$saveId/clubs/$clubId" params={{ saveId, clubId: r.club_id }} className="hover:text-primary hover:underline">
-                          {r.name}
+                        <Link to="/saves/$saveId/clubs/$clubId" params={{ saveId, clubId: r.club_id }} className="hover:text-primary hover:underline inline-flex items-center gap-1.5">
+                          <ClubCrest club={{ id: r.club_id, ...r }} className="w-4 h-4" /> {r.name}
                         </Link>
                       </td>
                       <td className="px-2 py-1.5 text-center font-semibold">{r.points}</td>
@@ -188,7 +189,10 @@ function CompetitionPage() {
               <div className="flex items-center gap-2">
                 <Trophy className="size-5 text-warn" />
                 <div>
-                  <div className="font-semibold">{(titleHolder as any).clubs?.name ?? "—"}</div>
+                  <div className="font-semibold flex items-center gap-1.5">
+                    {(titleHolder as any).clubs && <ClubCrest club={(titleHolder as any).clubs} className="w-4 h-4" />}
+                    {(titleHolder as any).clubs?.name ?? "—"}
+                  </div>
                   <div className="text-xs text-muted-foreground">Temporada {(titleHolder as any).season}</div>
                 </div>
               </div>
@@ -202,7 +206,7 @@ function CompetitionPage() {
                 <div key={p.id} className="flex items-center justify-between gap-2 text-sm">
                   <span className="min-w-0 flex-1 truncate">
                     <span className="text-muted-foreground">{i + 1}.</span> {p.name}
-                    <span className="text-muted-foreground"> — {p.clubs?.name}</span>
+                    <span className="text-muted-foreground inline-flex items-center gap-1"> — {p.clubs && <ClubCrest club={p.clubs} className="w-3.5 h-3.5" />} {p.clubs?.name}</span>
                   </span>
                   <span className="font-semibold">{p.goals_season}</span>
                 </div>
@@ -217,7 +221,7 @@ function CompetitionPage() {
               {(pastChampions.data ?? []).map((h: any) => (
                 <div key={h.season} className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">{h.season}</span>
-                  <span className="font-medium">{h.clubs?.name ?? "?"}</span>
+                  <span className="font-medium inline-flex items-center gap-1.5">{h.clubs && <ClubCrest club={h.clubs} className="w-4 h-4" />} {h.clubs?.name ?? "?"}</span>
                 </div>
               ))}
               {(pastChampions.data ?? []).length === 0 && <p className="text-sm text-muted-foreground">Ainda sem histórico.</p>}

@@ -8,6 +8,7 @@ import { fetchCalendarEvents } from "@/lib/calendar";
 import { isRivalry } from "@/game/rivalries";
 import { dayDiff } from "@/game/congestion";
 import { PageHeader, Pill, EmptyState, SubViewDropdown } from "@/components/fm";
+import { ClubCrest } from "@/components/club-crest";
 import { CalendarGrid, MonthNavButtons, monthNav } from "@/components/calendar-grid";
 import { CalendarDays, Flame, Zap } from "lucide-react";
 
@@ -65,7 +66,7 @@ function Calendar() {
         .order("match_date", { ascending: true });
       const ids = new Set<string>();
       for (const m of data ?? []) { ids.add(m.home_club_id); ids.add(m.away_club_id); }
-      const { data: clubs } = await supabase.from("clubs").select("id, name, short_name").in("id", Array.from(ids));
+      const { data: clubs } = await supabase.from("clubs").select("id, name, short_name, crest_url, primary_color, secondary_color").in("id", Array.from(ids));
       const map = new Map((clubs ?? []).map((c) => [c.id, c]));
       return (data ?? []).map((m) => ({ ...m, home: map.get(m.home_club_id), away: map.get(m.away_club_id) }));
     },
@@ -122,13 +123,13 @@ function Calendar() {
                 <div key={m.id} className={`flex items-center gap-2 px-2 py-2 text-sm ${isMine ? "" : "opacity-75"}`}>
                   <div className="w-24 shrink-0 font-mono text-xs text-muted-foreground">{formatDate(m.match_date)}</div>
                   <div className="flex flex-1 items-center gap-2">
-                    <span className={m.home_club_id === clubId ? "font-semibold" : ""}>{m.home?.name}</span>
+                    <span className={`inline-flex items-center gap-1 ${m.home_club_id === clubId ? "font-semibold" : ""}`}>{m.home && <ClubCrest club={m.home} className="w-3.5 h-3.5" />} {m.home?.name}</span>
                     {m.played ? (
                       <span className="mx-1 font-mono font-semibold">{m.home_score} × {m.away_score}</span>
                     ) : (
                       <span className="mx-1 text-muted-foreground">×</span>
                     )}
-                    <span className={m.away_club_id === clubId ? "font-semibold" : ""}>{m.away?.name}</span>
+                    <span className={`inline-flex items-center gap-1 ${m.away_club_id === clubId ? "font-semibold" : ""}`}>{m.away && <ClubCrest club={m.away} className="w-3.5 h-3.5" />} {m.away?.name}</span>
                     {derby && <Flame className="size-3.5 text-warn" aria-label="Clássico" />}
                     {tight && !m.played && (
                       <span className="inline-flex items-center gap-0.5 rounded bg-warn/15 px-1 py-0.5 text-[10px] font-semibold text-warn" title={`Só ${gap} dia${gap > 1 ? "s" : ""} desde o jogo anterior`}>

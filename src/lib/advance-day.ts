@@ -38,8 +38,8 @@ export interface AdvanceResult {
   userMatch: {
     matchId: string;
     result: MatchResult;
-    home: { id: string; name: string };
-    away: { id: string; name: string };
+    home: { id: string; name: string; crest_url?: string | null; primary_color?: string | null; secondary_color?: string | null };
+    away: { id: string; name: string; crest_url?: string | null; primary_color?: string | null; secondary_color?: string | null };
   } | null;
   seasonRolledOver?: boolean;
   newSeason?: number;
@@ -104,7 +104,7 @@ export async function advanceDays(
   if (clubIds.length > 0) {
     const { data: clubs } = await supabase
       .from("clubs")
-      .select("id, name, short_name, morale, reputation, formation, mentality, pressing, defensive_line, tempo, passing_style, stadium_capacity, training_focus, weekly_training, strength, competition_id, penalty_taker_id, free_kick_taker_id, corner_taker_id, captain_id, player_match_goals")
+      .select("id, name, short_name, crest_url, primary_color, secondary_color, morale, reputation, formation, mentality, pressing, defensive_line, tempo, passing_style, stadium_capacity, training_focus, weekly_training, strength, competition_id, penalty_taker_id, free_kick_taker_id, corner_taker_id, captain_id, player_match_goals")
       .in("id", clubIds) as any;
     for (const c of clubs ?? []) clubMap.set(c.id, c);
 
@@ -391,8 +391,8 @@ export async function advanceDays(
       userMatch = {
         matchId: m.id,
         result,
-        home: { id: m.home_club_id, name: homeClub?.name ?? "" },
-        away: { id: m.away_club_id, name: awayClub?.name ?? "" },
+        home: { id: m.home_club_id, name: homeClub?.name ?? "", crest_url: homeClub?.crest_url, primary_color: homeClub?.primary_color, secondary_color: homeClub?.secondary_color },
+        away: { id: m.away_club_id, name: awayClub?.name ?? "", crest_url: awayClub?.crest_url, primary_color: awayClub?.primary_color, secondary_color: awayClub?.secondary_color },
       };
       // Form/condition/morale
       const userIsHome = m.home_club_id === myClubId;

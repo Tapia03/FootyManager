@@ -150,7 +150,7 @@ function Market() {
       const { data, error } = await supabase
         .from("transfer_offers")
         .select(
-          "*, players(name, market_value), seller:clubs!transfer_offers_seller_club_id_fkey(name), buyer:clubs!transfer_offers_buyer_club_id_fkey(name)",
+          "*, players(name, market_value), seller:clubs!transfer_offers_seller_club_id_fkey(id, name, crest_url, primary_color, secondary_color), buyer:clubs!transfer_offers_buyer_club_id_fkey(id, name, crest_url, primary_color, secondary_color)",
         )
         .eq("save_id", saveId)
         .eq("status", "pending")
@@ -293,7 +293,7 @@ function Market() {
             {incoming.map((o) => (
               <OfferRow
                 key={o.id}
-                label={`${o.buyer?.name ?? "Clube"} quer ${o.deal_type === "loan" ? "pegar emprestado" : "comprar"} ${o.players?.name ?? "jogador"}`}
+                label={<span className="inline-flex items-center gap-1">{o.buyer && <ClubCrest club={o.buyer} className="w-3.5 h-3.5" />} {o.buyer?.name ?? "Clube"} quer {o.deal_type === "loan" ? "pegar emprestado" : "comprar"} {o.players?.name ?? "jogador"}</span>}
                 fee={o.current_fee}
                 expires={o.expires_date}
                 counterValue={counterFees[o.id] ?? o.current_fee}
@@ -315,7 +315,7 @@ function Market() {
             {outgoing.map((o) => (
               <OfferRow
                 key={o.id}
-                label={`${o.players?.name ?? "Jogador"}${o.deal_type === "loan" ? " (empréstimo)" : ""} — contraproposta de ${o.seller?.name ?? "clube"}`}
+                label={<span className="inline-flex items-center gap-1">{o.players?.name ?? "Jogador"}{o.deal_type === "loan" ? " (empréstimo)" : ""} — contraproposta de {o.seller && <ClubCrest club={o.seller} className="w-3.5 h-3.5" />} {o.seller?.name ?? "clube"}</span>}
                 fee={o.current_fee}
                 expires={o.expires_date}
                 counterValue={counterFees[o.id] ?? o.current_fee}
@@ -571,7 +571,7 @@ function Market() {
 }
 
 function OfferRow(props: {
-  label: string; fee: number; expires: string;
+  label: React.ReactNode; fee: number; expires: string;
   counterValue: number; onCounterChange: (v: number) => void;
   onAccept: () => void; onDecline: () => void; onCounter: () => void;
   pending: boolean; acceptLabel?: string; declineLabel?: string; counterLabel?: string;

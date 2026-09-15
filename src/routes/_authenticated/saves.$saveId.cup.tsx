@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useState } from "react";
 import { createCupCompetition } from "@/lib/cup-progression";
 import { PageHeader, Pill, EmptyState } from "@/components/fm";
+import { ClubCrest } from "@/components/club-crest";
 import { Trophy } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/saves/$saveId/cup")({
@@ -61,10 +62,10 @@ function CupPage() {
   const clubs = useQuery({
     queryKey: ["cup-clubs", clubIds.join(",")],
     enabled: clubIds.length > 0,
-    queryFn: async () => (await supabase.from("clubs").select("id, name, short_name").in("id", clubIds)).data ?? [],
+    queryFn: async () => (await supabase.from("clubs").select("id, name, short_name, crest_url, primary_color, secondary_color").in("id", clubIds)).data ?? [],
   });
-  const clubName = (id?: string | null) => clubs.data?.find((c) => c.id === id)?.short_name
-    ?? clubs.data?.find((c) => c.id === id)?.name ?? "?";
+  const clubObj = (id?: string | null) => clubs.data?.find((c) => c.id === id);
+  const clubName = (id?: string | null) => clubObj(id)?.short_name ?? clubObj(id)?.name ?? "?";
 
   const matchIds = Array.from(new Set((ties.data ?? []).flatMap((t) => [t.leg1_match_id, t.leg2_match_id]).filter((id): id is string => !!id)));
   const matches = useQuery({
@@ -115,7 +116,7 @@ function CupPage() {
         icon={Trophy}
         title={cupComp.data.name}
         subtitle={`Temporada ${cupComp.data.season}`}
-        actions={champion ? <Pill tone="warn">🏆 Campeão: {clubName(champion)}</Pill> : undefined}
+        actions={champion ? <Pill tone="warn">🏆 Campeão: {clubObj(champion) && <ClubCrest club={clubObj(champion)!} className="w-3.5 h-3.5" />} {clubName(champion)}</Pill> : undefined}
       />
 
       {rounds.map((roundIndex) => {
@@ -132,11 +133,14 @@ function CupPage() {
                 return (
                   <div key={t.id} className={`text-sm border-t border-border/50 pt-2 first:border-t-0 first:pt-0 ${isMine ? "-mx-2 rounded bg-primary/5 px-2" : ""}`}>
                     <div className="flex items-center justify-between gap-2">
-                      <div className="font-medium">
-                        {clubName(t.home_club_id)} {bye ? "— passou direto (bye)" : `x ${clubName(t.away_club_id)}`}
+                      <div className="font-medium inline-flex items-center gap-1 flex-wrap">
+                        {clubObj(t.home_club_id) && <ClubCrest club={clubObj(t.home_club_id)!} className="w-4 h-4" />} {clubName(t.home_club_id)}
+                        {bye ? " — passou direto (bye)" : (
+                          <>x {clubObj(t.away_club_id) && <ClubCrest club={clubObj(t.away_club_id)!} className="w-4 h-4" />} {clubName(t.away_club_id)}</>
+                        )}
                       </div>
                       {t.resolved && t.winner_club_id && (
-                        <Pill tone="ok">Classificado: {clubName(t.winner_club_id)}</Pill>
+                        <Pill tone="ok">Classificado: {clubObj(t.winner_club_id) && <ClubCrest club={clubObj(t.winner_club_id)!} className="w-3.5 h-3.5" />} {clubName(t.winner_club_id)}</Pill>
                       )}
                     </div>
                     {!bye && (

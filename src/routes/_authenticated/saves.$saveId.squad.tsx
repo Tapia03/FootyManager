@@ -14,6 +14,7 @@ import { loanOutProgress } from "@/game/loan-status";
 import { marketTrendFromForm } from "@/game/valuation";
 import { suggestNumberUpgrades, type NumberUpgradeSuggestion } from "@/game/squad-numbers";
 import { NationalityFlag } from "@/components/nationality-flag";
+import { ClubCrest } from "@/components/club-crest";
 import { PageHeader, SubTabs, Pill, RatingBadge, EmptyState, type Tone } from "@/components/fm";
 import { DressingRoomView } from "@/components/dressing-room-view";
 import { Users, Search, RefreshCw, ArrowDownUp, Shirt } from "lucide-react";
@@ -60,7 +61,7 @@ function Squad() {
     queryKey: ["loaned-out", clubId],
     enabled: !!clubId,
     queryFn: async () => (await supabase
-      .from("players").select("id, name, position, overall, club_id, loan_return_date, clubs!players_club_id_fkey(name)")
+      .from("players").select("id, name, position, overall, club_id, loan_return_date, clubs!players_club_id_fkey(id, name, crest_url, primary_color, secondary_color)")
       .eq("loaned_from_club_id", clubId!)).data ?? [],
   });
 
@@ -75,7 +76,7 @@ function Squad() {
   const loanedInOrigins = useQuery({
     queryKey: ["loaned-in-origins", loanedInOriginIds],
     enabled: loanedInOriginIds.length > 0,
-    queryFn: async () => (await supabase.from("clubs").select("id, name").in("id", loanedInOriginIds)).data ?? [],
+    queryFn: async () => (await supabase.from("clubs").select("id, name, crest_url, primary_color, secondary_color").in("id", loanedInOriginIds)).data ?? [],
   });
 
   const loanOut = useMutation({
@@ -363,7 +364,7 @@ function LoansView({
   saveId: string; loanedIn: any[]; loanedInOrigins: any[]; loanedOut: any[]; todayISO?: string;
   onRecall: (playerId: string) => void; recallPending: boolean;
 }) {
-  const originName = (clubId: string | null) => loanedInOrigins.find((c) => c.id === clubId)?.name ?? "?";
+  const originClub = (clubId: string | null) => loanedInOrigins.find((c) => c.id === clubId);
 
   if (loanedIn.length === 0 && loanedOut.length === 0) {
     return (
@@ -391,7 +392,7 @@ function LoansView({
                     <Link to="/saves/$saveId/players/$playerId" params={{ saveId, playerId: p.id }} className="font-medium hover:text-primary hover:underline">
                       {p.name}
                     </Link>{" "}
-                    <span className="text-muted-foreground">{positionLabel(p.natural_position ?? p.position)} · de {originName(p.loaned_from_club_id)}</span>
+                    <span className="text-muted-foreground inline-flex items-center gap-1">{positionLabel(p.natural_position ?? p.position)} · de {originClub(p.loaned_from_club_id) && <ClubCrest club={originClub(p.loaned_from_club_id)} className="w-3.5 h-3.5" />} {originClub(p.loaned_from_club_id)?.name ?? "?"}</span>
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     <span>{p.appearances_season ?? 0} jogos</span>
@@ -421,7 +422,7 @@ function LoansView({
                 <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 text-sm">
                   <div className="min-w-[160px]">
                     <span className="font-medium">{p.name}</span>{" "}
-                    <span className="text-muted-foreground">{positionLabel(p.position)} · OVR {p.overall} · com {p.clubs?.name ?? "?"}</span>
+                    <span className="text-muted-foreground inline-flex items-center gap-1">{positionLabel(p.position)} · OVR {p.overall} · com {p.clubs && <ClubCrest club={p.clubs} className="w-3.5 h-3.5" />} {p.clubs?.name ?? "?"}</span>
                   </div>
                   {progress && (
                     <div className="flex min-w-[160px] items-center gap-2">

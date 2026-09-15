@@ -10,6 +10,7 @@ import { playerScoutingNotes, type PlayerAttributes } from "@/game/attributes";
 import { effectiveKnowledge, tierFor, fuzzRange } from "@/game/scouting";
 import { PageHeader, SubTabs, Pill, StatBar, RatingBadge, ProsConsList, EmptyState, ratingTone } from "@/components/fm";
 import { NationalityFlag } from "@/components/nationality-flag";
+import { ClubCrest } from "@/components/club-crest";
 import { BarChart3, Target, Zap, AlertTriangle, Compass, CalendarDays } from "lucide-react";
 import { useState } from "react";
 
@@ -79,7 +80,7 @@ function AnalysisPage() {
     enabled: !!compId && season != null,
     queryFn: async () => {
       const [{ data: clubs }, { data: matches }] = await Promise.all([
-        supabase.from("clubs").select("id, name").eq("competition_id", compId!),
+        supabase.from("clubs").select("id, name, crest_url, primary_color, secondary_color").eq("competition_id", compId!),
         supabase.from("matches")
           .select("home_club_id, away_club_id, home_score, away_score, played")
           .eq("competition_id", compId!).eq("season", season),
@@ -148,8 +149,8 @@ function AnalysisPage() {
                   <Compass className="size-4 text-info" />
                   <span className="fm-eyebrow">
                     DNA tático —{" "}
-                    <Link to="/saves/$saveId/clubs/$clubId" params={{ saveId, clubId: oppId! }} className="hover:text-primary hover:underline">
-                      {opp.data.club.name}
+                    <Link to="/saves/$saveId/clubs/$clubId" params={{ saveId, clubId: oppId! }} className="hover:text-primary hover:underline inline-flex items-center gap-1.5">
+                      <ClubCrest club={opp.data.club as any} className="w-4 h-4" /> {opp.data.club.name}
                     </Link>
                   </span>
                 </div>
@@ -164,7 +165,7 @@ function AnalysisPage() {
 
                 {myRating && oppRating && (
                   <div className="mt-4 space-y-1.5 border-t pt-3">
-                    <div className="fm-eyebrow">Você × {opp.data.club.name} (tática atual)</div>
+                    <div className="fm-eyebrow flex items-center gap-1.5">Você × <ClubCrest club={opp.data.club as any} className="w-3.5 h-3.5" /> {opp.data.club.name} (tática atual)</div>
                     <StatBar label="Ataque" home={ratingToDisplay(myRating.attack)} away={ratingToDisplay(oppRating.attack)} />
                     <StatBar label="Meio" home={ratingToDisplay(myRating.midfield)} away={ratingToDisplay(oppRating.midfield)} />
                     <StatBar label="Defesa" home={ratingToDisplay(myRating.defense)} away={ratingToDisplay(oppRating.defense)} />
@@ -305,7 +306,9 @@ function LeagueEfficiency({
               }`}
             >
               <div className="mb-1 flex items-center justify-between">
-                <span className={`truncate font-semibold ${mine ? "text-primary" : isOpp ? "text-info" : ""}`}>{r.name}</span>
+                <span className={`truncate font-semibold inline-flex items-center gap-1.5 ${mine ? "text-primary" : isOpp ? "text-info" : ""}`}>
+                  <ClubCrest club={{ id: r.club_id, ...r }} className="w-3.5 h-3.5 shrink-0" /> {r.name}
+                </span>
                 {mine && <Pill tone="ok">Você</Pill>}
                 {isOpp && <Pill tone="info">Próximo</Pill>}
               </div>
