@@ -87,6 +87,33 @@ async function waitReady(timeoutMs = 20000) {
   throw new Error(`postgres nao ficou pronto em ${timeoutMs}ms (porta ${port})`);
 }
 
+// O postmaster aceita a conexao TCP assim que comeca a escutar, mas apos um
+// desligamento sujo (queda de energia, kill forcado, Windows Update
+// reiniciando o PC) ele ainda esta fazendo o replay do WAL nesse momento e
+// responde "FATAL: o sistema de banco de dados esta iniciando" pra qualquer
+// query — waitReady() sozinho nao cobre isso (so testa a porta). Sem retry
+// aqui, ensureSchema() falhava e o processo node morria antes do replay
+// terminar, o que interrompia o proprio replay (kill do postgres filho) e so
+// piorava a proxima tentativa (visto na pratica: 2 tentativas seguidas
+// geraram "sistema de banco de dados foi interrompido enquanto estava sendo
+// recuperado").
+async function waitQueryable(timeoutMs = 60000) {
+  const start = Date.now();
+  let lastErr;
+  while (Date.now() - start < timeoutMs) {
+    try {
+      execFileSync(exe("psql"), [
+        "-h", "127.0.0.1", "-p", String(port), "-U", "postgres", "-d", "postgres", "-t", "-A", "-c", "SELECT 1",
+      ], { stdio: ["ignore", "ignore", "pipe"] });
+      return;
+    } catch (e) {
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+  throw new Error(`postgres nao aceitou queries em ${timeoutMs}ms: ${lastErr?.message}`);
+}
+
 async function ensureSchema() {
   // -t -A: saida "tuples only, unaligned" -> só o valor cru ("t"/"f"), sem
   // cabeçalho nem formatação de tabela.
@@ -143,6 +170,8 @@ async function main() {
 
   await waitReady();
   console.log(`[local-db] postgres nativo ouvindo em 127.0.0.1:${port}`);
+  await waitQueryable();
+  console.log("[local-db] postgres pronto pra queries (replay do WAL concluido, se havia)");
 
   await ensureSchema();
 
