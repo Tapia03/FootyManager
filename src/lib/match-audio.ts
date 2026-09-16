@@ -1,10 +1,10 @@
-// Áudio do visualizador 3D — sintetizado via Web Audio API, sem nenhum
-// arquivo de som externo (mesma filosofia do motor 3D procedural: nada de
-// pipeline de assets, tudo gerado). Cobre: murmúrio contínuo da torcida,
-// tensão que sobe em lance perigoso/gol (rampa rápida-sobe/devagar-desce,
-// espelhando o `uCheer` do shader da torcida em match-3d-pitch.tsx), apito
-// (início da mostra + cartão), explosão pontual no gol e sininho de
-// substituição.
+// Áudio do visualizador de partida — sintetizado via Web Audio API, sem
+// nenhum arquivo de som externo. Cobre: murmúrio contínuo da torcida,
+// tensão que sobe em lance perigoso/gol (rampa rápida-sobe/devagar-desce),
+// apito (início da mostra + cartão), explosão pontual no gol e sininho de
+// substituição. Ligado em src/components/match-pitch.tsx (2D) — existia
+// originalmente só no visualizador 3D, removido do projeto em 15/09/2026;
+// a engine em si nunca dependeu de Three.js, só precisou ser portada.
 //
 // `start()` precisa ser chamado num gesto do usuário — o navegador bloqueia
 // áudio sem isso; chamamos de novo (idempotente) nos cliques de

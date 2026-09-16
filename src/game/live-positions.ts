@@ -5,13 +5,14 @@ import { ROLES_BY_KEY } from "./roles";
 import type { TextureEvent } from "./texture";
 
 // -----------------------------------------------------------------------------
-// Posicionamento "ao vivo" pra visualização de partida (2D e 3D). Nosso motor
+// Posicionamento "ao vivo" pra visualização de partida (2D). Nosso motor
 // (src/game/simulation.ts) não roda uma simulação espacial contínua — produz
 // um resultado com eventos discretos por minuto, sem trajetória de bola nem
-// posição de jogador. Este módulo é o único lugar que decide, a partir disso,
-// "onde a bola/jogadores estão" num instante qualquer — tanto o pitch 2D
-// (match-pitch.tsx) quanto o 3D (match-3d-pitch.tsx) usam exatamente a mesma
-// lógica, pra nunca divergir visualmente.
+// posição de jogador. Este módulo decide, a partir disso, o ALVO tático de
+// cada jogador num instante qualquer — "onde ele DEVERIA estar agora"; quem
+// consome isso (match-pitch.tsx) persegue esse alvo com posição+velocidade
+// reais via src/hooks/use-player-motion.ts, em vez de renderizar o valor
+// direto (ver comentário lá pro motivo).
 //
 // Modelo: o jogo inteiro é dividido em "jogadas" (spells) de posse — cada uma
 // com um lado, uma duração e (às vezes) um evento de ataque real que ela
@@ -418,12 +419,37 @@ function dot(l: MatchLineupEntry, side: "home" | "away", x: number, y: number): 
   return { playerId: l.playerId, playerName: l.playerName, slot: l.slot, side, x: clamp(x, 1.5, 98.5), y: clamp(y, 1.5, 98.5) };
 }
 
+// -- Bloco defensivo: bandas de altura por sub-função ------------------------
+// Achado ao vivo (partida real Metz × PSG): com um vão fixo de só 15 entre
+// lineY/midY, zagueiro/lateral/ponta/atacante-recuando caíam praticamente na
+// MESMA faixa de altura — 8 dos 10 jogadores de linha espremidos em ~5 pontos
+// percentuais, uma bolha em vez de um time. Cada sub-função agora tem uma
+// FRAÇÃO própria e crescente (0 = linha de fundo, 1 = ponto mais adiantado que
+// o time ainda segura recuado) de um vão bem maior (`DEF_BLOCK_SPAN_BASE`),
+// então nunca colidem — mesmo com o bloco inteiro comprimido perto do próprio
+// gol. Ordem (mais recuado → mais adiantado) preserva a intenção original:
+// zagueiro trava a linha; lateral cobre o corredor um pouco à frente; volante
+// escalona antes do meio; ponta/meia aberto um pouco mais adiantado que o
+// volante; meia-central mais solto ainda; atacante só recua até perto do meio
+// pro contra-ataque (não até a própria defesa).
+const DEF_BLOCK_SPAN_BASE = 34;
+const DEF_BAND_FRACTION: Record<SubRole, number> = {
+  GK: 0, CB: 0.0, FB: 0.14, DM: 0.32, WM: 0.5, W: 0.5, AM: 0.66, CM: 0.66, ST: 0.85,
+};
+// Instrução/função individual também vale na fase defensiva — antes só o lado
+// que ataca lia `instructions`/`roleKey` (ver buildOpenPlay), a defesa ignorava
+// os dois por completo. Efeito mais discreto que no ataque (0.28/0.35): um
+// time defendendo segura mais a forma, corrida individual é a exceção.
+const DEF_ROAM_DEPTH_FACTOR = 0.06;
+const DEF_ROAM_WIDTH_FACTOR = 0.1;
+
 // -- Jogada em curso (open play) ----------------------------------------------
 
 // Time que ATACA: sobe em bloco conforme a bola avança, um jogador "carrega" a
 // bola (o mais perto), pontas seguram a largura e o(s) atacante(s) ameaçam a
 // linha; time que DEFENDE: linha de zaga plana (linha de impedimento) na altura
-// da bola, meio à frente dela, 1-2 saem na pressão no terço defensivo.
+// da bola, cada sub-função na sua banda própria (ver acima), 1-2 saem na
+// pressão no terço defensivo.
 function buildOpenPlay(
   att: PosCtx, def: PosCtx, ball: { x: number; y: number },
 ): LiveDot[] {
@@ -536,11 +562,15 @@ function buildOpenPlay(
     return dot(p.l, att.side, tx + j.x, ty + j.y);
   });
 
-  // --- defensor: linha plana na altura da bola + meio à frente + pressão ---
+  // --- defensor: linha plana na altura da bola + bandas por função + pressão ---
   const defBases = def.lineup.map((l) => ({ l, b: baseFor(def, l), role: roleOf(l.slot) }));
   // altura da linha de zaga (y) — recua conforme a bola chega perto do gol
   const lineY = def.side === "home" ? clamp(48 + advance * 34, 40, 88) : clamp(52 - advance * 34, 12, 60);
-  const midY = def.side === "home" ? lineY - 15 : lineY + 15;
+  const fwdSignDef = def.side === "home" ? -1 : 1;
+  // Fluidez do time (geral, ver tactics.tsx/ClubLike.team_fluidity) estica ou
+  // comprime o bloco defensivo — mesmo espírito já aplicado no lado que ataca.
+  const defFluidity = defBases.find((p) => p.role !== "GK")?.l.teamFluidity;
+  const blockSpan = DEF_BLOCK_SPAN_BASE * (defFluidity === "fluid" ? 1.15 : defFluidity === "structured" ? 0.85 : 1);
   // quem pressiona — instrução de Pressão (ver player-instructions.ts) desloca
   // os limiares: time instruído a pressionar mais sobe a marcação mais cedo
   // (limiar mais baixo), time instruído a recuar demora mais (limiar mais
@@ -564,19 +594,35 @@ function buildOpenPlay(
     }
     const sub = subRoleOf(p.l.slot);
     const ph = hashId(p.l.playerId) * Math.PI * 2;
+
+    // Instrução de jogador (ver player-instructions.ts) — mesmo princípio do
+    // lado que ataca, efeito mais discreto (ver DEF_ROAM_*_FACTOR acima):
+    // "avançado" sobe um pouco a banda mesmo defendendo (marcação mais alta),
+    // "aberto" puxa um pouco mais pro lado da bola.
+    const ins = p.l.instructions ?? DEFAULT_INSTRUCTIONS;
+    const depthNudge = ins.roamDepth * DEF_ROAM_DEPTH_FACTOR;
+    const widthNudge = ins.roamWidth * DEF_ROAM_WIDTH_FACTOR;
+
     // compressão lateral leve + desloca pro lado da bola
-    let tx = p.b.x + (50 - p.b.x) * 0.12 + (ball.x - p.b.x) * 0.22;
-    // altura por sub-função — zagueiro trava na linha de impedimento, lateral
-    // fica um pouco à frente dela (cobre o corredor), volante e ponta/meia
-    // aberto escalonam antes do ataque, sem virar uma parede uniforme.
-    const fwdSign = def.side === "home" ? -1 : 1;
-    let ty: number;
-    if (sub === "CB") ty = lineY;
-    else if (sub === "FB") ty = lineY + fwdSign * 3;
-    else if (sub === "DM") ty = midY - fwdSign * 4;
-    else if (sub === "W" || sub === "WM") ty = midY - fwdSign * 10;
-    else if (sub === "AM" || sub === "CM") ty = midY;
-    else ty = midY - fwdSign * 14; // ST recua até o meio-campo pro contra-ataque
+    let tx = p.b.x + (50 - p.b.x) * 0.12 + (ball.x - p.b.x) * (0.22 + widthNudge);
+
+    // Altura por banda própria da sub-função (ver DEF_BAND_FRACTION acima) —
+    // nunca colide com a banda vizinha, mesmo com blockSpan comprimido pela
+    // fluidez do time ou o bloco inteiro recuado perto do próprio gol.
+    const frac = DEF_BAND_FRACTION[sub] ?? 0.5;
+    let ty = lineY + fwdSignDef * (frac + depthNudge) * blockSpan;
+
+    // Vetor de diagrama da função (mesma lógica do lado que ataca, ver
+    // buildOpenPlay acima) — mais discreto aqui: defesa segura mais a forma
+    // que o ataque, mas a função de cada jogador ainda pesa na posição.
+    const diag = p.l.roleKey ? ROLES_BY_KEY[p.l.roleKey]?.diagram : undefined;
+    if (diag) {
+      const isLeftSideDef = p.b.x < 50;
+      const dxEff = isLeftSideDef ? diag.dx : -diag.dx;
+      ty += fwdSignDef * (diag.dy / 140) * 8;
+      tx += (dxEff / 100) * 5;
+    }
+
     ty += Math.sin(def.minute * 0.4 + ph) * 2;
     if (pressOrder.includes(i)) { tx += (ball.x - tx) * 0.4; ty += (ball.y - ty) * 0.4; }
     return dot(p.l, def.side, tx + j.x, ty + j.y);

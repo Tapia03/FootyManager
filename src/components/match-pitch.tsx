@@ -6,16 +6,20 @@ import { contrastText } from "@/game/club-colors";
 import { Button } from "@/components/ui/button";
 import { HL_SPEED } from "@/game/highlights";
 import { useHighlightPlayback } from "@/hooks/use-highlight-playback";
+import { usePlayerMotion } from "@/hooks/use-player-motion";
+import { MatchAudioEngine } from "@/lib/match-audio";
+import { Volume2, VolumeX } from "lucide-react";
 
 // -----------------------------------------------------------------------------
-// Visualizador 2D da partida — não é física real (nosso motor produz eventos
-// discretos por minuto, não uma simulação espacial contínua), mas os
-// jogadores também não ficam estáticos: têm deriva contínua e reagem ao
-// lance ativo, via src/game/live-positions.ts — a mesma lógica de
-// posicionamento usada pelo visualizador 3D (match-3d-pitch.tsx), pra nunca
-// divergir entre os dois. A bola "viaja" até o gol certo em torno do minuto
-// de cada evento de ataque (chance/gol/defesa), com destaque nos jogadores
-// envolvidos em cada evento.
+// Visualizador 2D da partida — o motor (src/game/simulation.ts) produz
+// eventos discretos por minuto, não uma simulação espacial contínua;
+// src/game/live-positions.ts calcula, pra qualquer minuto, o ALVO tático de
+// cada jogador (função/instrução/bola). O que se renderiza aqui é esse alvo
+// perseguido com posição+velocidade reais (src/hooks/use-player-motion.ts,
+// 15/09/2026 — "comportamento real do FM Touch"), sem teleporte entre
+// frames e sem dois jogadores desenhados no mesmo ponto. A bola "viaja" até
+// o gol certo em torno do minuto de cada evento de ataque (chance/gol/
+// defesa), com destaque nos jogadores envolvidos em cada evento.
 //
 // Visual (2026-09-12, 2ª correção): o RETRATO da rodada anterior era
 // baseado num vídeo antigo/genérico e acabou vindo de uma tela ERRADA de
@@ -49,6 +53,11 @@ const GOAL_BANNER_WINDOW = 2.6;
 
 const SPEED_OPTIONS = { lento: HL_SPEED * 0.65, normal: HL_SPEED, rapido: HL_SPEED * 1.6 } as const;
 
+// Nome da chave mantido do tempo em que o áudio só existia no visualizador
+// 3D (removido) — preservar pra não perder a preferência de quem já tinha
+// desativado o som.
+const AUDIO_MUTED_LS_KEY = "footymanager-3d-muted";
+
 // x/y do nosso modelo (0-100, y=100 é o gol do mandante) → % de tela num
 // campo em PAISAGEM (mandante ataca da esquerda pra direita).
 function toScreen(x: number, y: number): { left: number; top: number } {
@@ -56,13 +65,14 @@ function toScreen(x: number, y: number): { left: number; top: number } {
 }
 
 export function MatchPitch({
-  result, homeName, awayName, homeColors, awayColors, numbers,
+  result, homeName, awayName, homeColors, awayColors, numbers, stadiumCapacity,
   initialMinute = 0, maxMinute = 90, onReachMax,
 }: {
   result: MatchResult; homeName: string; awayName: string;
   homeColors?: { primary: string; secondary: string };
   awayColors?: { primary: string; secondary: string };
   numbers?: Map<string, number | undefined>;
+  stadiumCapacity?: number; // alimenta o volume da torcida no áudio (ver MatchAudioEngine)
   initialMinute?: number; // de onde começar (ex: 45, pra retomar o 2º tempo sem reanimar o 1º)
   maxMinute?: number;     // teto de reprodução (ex: 45, pra pausar no intervalo)
   onReachMax?: () => void; // disparado uma vez quando a reprodução alcança maxMinute
@@ -86,6 +96,60 @@ export function MatchPitch({
     events, initialMinute, maxMinute, speed: SPEED_OPTIONS[speedKey], onReachMax,
     resolveScorer: (playerId, fallback) => (playerId && playerNameById.get(playerId)) || fallback,
   });
+
+  // Áudio sintetizado (torcida/apito/gol/substituição) — portado do antigo
+  // visualizador 3D (removido), ver src/lib/match-audio.ts. `start()` é
+  // chamado de novo (idempotente) nos cliques de Assistir/mudo, gestos reais
+  // do usuário — alguns navegadores exigem isso pra liberar áudio.
+  const [muted, setMuted] = useState(() => {
+    try { return localStorage.getItem(AUDIO_MUTED_LS_KEY) === "1"; } catch { return false; }
+  });
+  const audioRef = useRef<MatchAudioEngine | null>(null);
+  if (!audioRef.current) audioRef.current = new MatchAudioEngine();
+  const audioFiredRef = useRef<Set<string>>(new Set());
+  const lastReplayGoalRef = useRef<number | null>(null);
+  const audioPrevMinRef = useRef(initialMinute);
+
+  useEffect(() => {
+    if (!segments.length) return; // "sem lances" — nem liga o áudio
+    const engine = audioRef.current!;
+    engine.setMuted(muted);
+    engine.start();
+    engine.whistle(); // apito de início do trecho ao vivo
+    return () => engine.dispose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => { audioRef.current?.setMuted(muted); }, [muted]);
+  useEffect(() => {
+    audioRef.current?.setCrowdFill(Math.max(0.4, Math.min(1, (stadiumCapacity ?? 30000) / 45000)));
+  }, [stadiumCapacity]);
+
+  // Apito (cartão) e sininho (sub) pros eventos cruzados durante um lance —
+  // nunca pra eventos "pulados" no corte entre lances (o corte já adianta o
+  // relógio pro início do próximo lance antes do salto).
+  useEffect(() => {
+    if (phase !== "playing" || replay) { audioPrevMinRef.current = minute; return; }
+    const from = audioPrevMinRef.current;
+    for (const e of events) {
+      if (e.minute <= from || e.minute > minute) continue;
+      if (e.type !== "yellow" && e.type !== "red" && e.type !== "sub") continue;
+      const key = `${e.type}-${e.minute}`;
+      if (audioFiredRef.current.has(key)) continue;
+      audioFiredRef.current.add(key);
+      if (e.type === "sub") audioRef.current?.subChime();
+      else audioRef.current?.whistle(e.type === "red");
+    }
+    audioPrevMinRef.current = minute;
+  }, [minute, phase, replay, events]);
+
+  // Estouro de torcida na reprise de gol (uma vez por gol distinto).
+  useEffect(() => {
+    if (replay && replay.goalMin !== lastReplayGoalRef.current) {
+      lastReplayGoalRef.current = replay.goalMin;
+      audioRef.current?.setTension(1);
+      audioRef.current?.goalBurst();
+    }
+  }, [replay]);
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
@@ -145,11 +209,19 @@ export function MatchPitch({
     .sort((a, b) => b.rating - a.rating), [result.awayLineup, ratingsById]);
   const motm = useMemo(() => [...ratedHome, ...ratedAway].sort((a, b) => b.rating - a.rating)[0], [ratedHome, ratedAway]);
 
-  const dots = useMemo(() => computePlayerPositions(
+  // Alvo tático "onde esse jogador DEVERIA estar agora" — igual sempre foi.
+  // O que renderizamos de verdade (`dots`, abaixo) é esse alvo perseguido
+  // com posição+velocidade reais (ver src/hooks/use-player-motion.ts) — sem
+  // teleporte entre frames, com separação garantida entre jogadores.
+  const targetDots = useMemo(() => computePlayerPositions(
     result.homeLineup ?? [], result.awayLineup ?? [],
     result.homeFormation ?? "4-3-3", result.awayFormation ?? "4-3-3",
     effMin, events, homePossessionPct, result.texture ?? [],
   ), [result.homeLineup, result.awayLineup, result.homeFormation, result.awayFormation, effMin, events, homePossessionPct, result.texture]);
+  // Reseta (snap direto pro alvo, sem perseguição) exatamente nos pontos de
+  // corte reais do sistema: troca de lance e início/fim de reprise de gol.
+  const resetKey = `${segIndex}:${replay ? `replay-${replay.goalMin}` : "live"}`;
+  const dots = usePlayerMotion(targetDots, resetKey);
 
   const caption = useMemo(
     () => (phase === "playing" ? currentCaption(events, effMin, homeName, awayName, homePossessionPct) : null),
@@ -165,6 +237,16 @@ export function MatchPitch({
   );
   const goalWindow = !!goalEvtNow || !!replay;
   const goalScorerName = replay?.scorer ?? (goalEvtNow?.playerId ? playerNameById.get(goalEvtNow.playerId) : undefined);
+
+  // Tensão da torcida (áudio) — sobe rápido em lance perigoso/gol, desce
+  // devagar; só dispara de novo quando o booleano muda (ver setTension).
+  const chanceWindow = useMemo(
+    () => events.some((e) => e.type === "chance" && effMin >= e.minute - 1 && effMin <= e.minute + 0.3),
+    [events, effMin],
+  );
+  useEffect(() => {
+    audioRef.current?.setTension(goalWindow ? 1 : chanceWindow ? 0.4 : 0);
+  }, [goalWindow, chanceWindow]);
 
   const liveStats = useMemo(() => liveMatchStats(result.stats, events, effMin, 90), [result.stats, events, effMin]);
 
@@ -341,17 +423,31 @@ export function MatchPitch({
       <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm" variant="outline"
-          onClick={() => { if (isFinal) rewatch(); else setPlaying((p) => !p); }}
+          onClick={() => { audioRef.current?.start(); if (isFinal) rewatch(); else setPlaying((p) => !p); }}
           disabled={phase === "cut"}
         >
           {isFinal ? "Rever lances" : playing ? "Pausar" : "Assistir"}
         </Button>
         <Button
           size="sm" variant="ghost"
-          onClick={skipToNext}
+          onClick={() => { audioRef.current?.start(); skipToNext(); }}
           disabled={!!replay || phase !== "playing" || segIndex + 1 >= segments.length}
         >
           Próximo lance ⏭
+        </Button>
+        <Button
+          size="sm" variant="ghost" className="px-2"
+          onClick={() => {
+            audioRef.current?.start();
+            setMuted((m) => {
+              const next = !m;
+              try { localStorage.setItem(AUDIO_MUTED_LS_KEY, next ? "1" : "0"); } catch { /* ignore */ }
+              return next;
+            });
+          }}
+          title={muted ? "Ativar som" : "Silenciar"}
+        >
+          {muted ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}
         </Button>
         <select
           className="bg-transparent border rounded px-1.5 py-1 text-xs"

@@ -176,22 +176,26 @@ describe("applyTextureAnims — Fase 2 (micro-eventos viram pose/deslocamento vi
 });
 
 describe("Team Fluidity — 'fluid' solta mais o time da posição fixa que 'structured'", () => {
-  it("um jogador de linha oscila com amplitude maior em 'fluid' do que em 'structured', mesma cena", () => {
+  const buildLineup = (fluidity: "structured" | "fluid"): MatchLineupEntry[] =>
+    makeLineup("home").map((l) => ({ ...l, teamFluidity: fluidity }));
+  const awayLineup = makeLineup("away");
+  const formation: FormationCode = "4-3-3";
+  const events: MatchEvent[] = [];
+  const targetId = "home-6"; // LCM — jogador de linha, não goleiro
+
+  it("no ataque, um jogador de linha oscila com amplitude maior em 'fluid' do que em 'structured', mesma cena", () => {
     // Formação/bola/eventos idênticos nos 2 lados — a ÚNICA diferença é
     // teamFluidity. buildOpenPlay soma um termo de oscilação individual
     // (Math.cos/sin(minute*k + fase) * runAmp) por cima da posição-alvo — o
     // range (máx-mín) dessa oscilação ao longo de vários minutos é um proxy
     // direto e estável do runAmp efetivo, sem precisar expor buildOpenPlay.
-    const buildLineup = (fluidity: "structured" | "fluid"): MatchLineupEntry[] =>
-      makeLineup("home").map((l) => ({ ...l, teamFluidity: fluidity }));
-    const awayLineup = makeLineup("away");
-    const formation: FormationCode = "4-3-3";
-    const events: MatchEvent[] = [];
-    const targetId = "home-6"; // LCM — jogador de linha, não goleiro
-
+    // Minutos escolhidos (checado via instrumentação pontual) caem todos
+    // numa janela em que home-6 está sempre atacando nesta cena — 10-14 caem
+    // numa jogada defensiva (ver teste abaixo) e 24 cai numa bola parada
+    // (outro código, sem essa oscilação), por isso ficam de fora daqui.
     function rangeFor(fluidity: "structured" | "fluid"): number {
       const homeLineup = buildLineup(fluidity);
-      const ys = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30].map((minute) => {
+      const ys = [16, 18, 20, 22, 26, 28, 30].map((minute) => {
         const dots = computePlayerPositions(homeLineup, awayLineup, formation, formation, minute, events, 50);
         return dots.find((d) => d.playerId === targetId)!.y;
       });
@@ -203,9 +207,61 @@ describe("Team Fluidity — 'fluid' solta mais o time da posição fixa que 'str
     expect(fluidRange).toBeGreaterThan(structuredRange);
   });
 
+  it("na defesa, o bloco de um time 'fluid' fica mais adiantado que o de um 'structured', mesma cena", () => {
+    // Item novo (achado ao vivo, partida real Metz × PSG): a fluidez do time
+    // também precisa valer quando o time DEFENDE, não só quando ataca — antes
+    // dessa correção a fase defensiva ignorava teamFluidity por completo.
+    // Minutos 10-14 (checados via instrumentação pontual) caem numa jogada em
+    // que home-6 está sempre defendendo nesta cena.
+    function yAt(fluidity: "structured" | "fluid", minute: number): number {
+      const homeLineup = buildLineup(fluidity);
+      const dots = computePlayerPositions(homeLineup, awayLineup, formation, formation, minute, events, 50);
+      return dots.find((d) => d.playerId === targetId)!.y;
+    }
+    for (const minute of [10, 12, 14]) {
+      // y menor (mais perto do gol adversário) = bloco mais adiantado — mando
+      // é "home", então avançar significa reduzir y (ver depthY/toScreen).
+      expect(yAt("fluid", minute)).toBeLessThan(yAt("structured", minute));
+    }
+  });
+
   it("nunca quebra quando teamFluidity está ausente (dado antigo, sem a coluna nova)", () => {
     const homeLineup = makeLineup("home");
     const awayLineup = makeLineup("away");
     expect(() => computePlayerPositions(homeLineup, awayLineup, "4-3-3", "4-3-3", 20, [], 50)).not.toThrow();
+  });
+});
+
+describe("Bloco defensivo recuado não vira uma bolha (regressão achada ao vivo, Metz × PSG)", () => {
+  // Antes desta correção, com um vão fixo de 15 entre lineY/midY, zagueiro,
+  // lateral, ponta e atacante recuando caíam quase todos na MESMA faixa de
+  // altura quando o time defendia bem recuado — 8 dos 10 jogadores de linha
+  // espremidos em ~5 pontos percentuais, uma bolha em vez de um time. Cena
+  // forçada por um evento real perto do minuto observado (goleiro defensor
+  // fica perto do próprio gol, confirmando bloco recuado de verdade).
+  it("zagueiro, lateral, meio e atacante ficam em faixas de altura claramente separadas quando o time defende recuado", () => {
+    const homeLineup = makeLineup("home");
+    const awayLineup = makeLineup("away");
+    const formation: FormationCode = "4-3-3";
+    const events: MatchEvent[] = [{ minute: 50, type: "goal", side: "away", text: "50' Gol do away" }];
+    const minute = 49.9; // logo antes do evento — bola bem perto do gol do home, bloco recuado
+
+    const dots = computePlayerPositions(homeLineup, awayLineup, formation, formation, minute, events, 50);
+    const gk = dots.find((d) => d.side === "home" && d.slot === "GK")!;
+    // confirma que a cena É de bloco recuado de verdade (goleiro perto do próprio gol).
+    expect(gk.y).toBeGreaterThan(80);
+
+    const byY = (slot: string) => dots.find((d) => d.side === "home" && d.slot === slot)!.y;
+    const cb = byY("LCB"), fb = byY("LB"), dm = byY("DM"), st = byY("ST");
+    // Ordem correta (mais recuado → mais adiantado) e, principalmente, SEPARAÇÃO
+    // real entre as linhas — o bug original não tinha ordem errada, tinha
+    // faixas colididas. `toBeGreaterThan` sozinho não pegaria isso de volta.
+    const MIN_GAP = 4;
+    expect(cb - fb).toBeGreaterThan(MIN_GAP);
+    expect(fb - dm).toBeGreaterThan(MIN_GAP);
+    expect(dm - st).toBeGreaterThan(MIN_GAP);
+    // Vão total zagueiro→atacante bem maior que o vão de 15 usado antes (que
+    // já não sobrava nada depois de repartido entre 4 bandas).
+    expect(cb - st).toBeGreaterThan(20);
   });
 });
